@@ -101,7 +101,8 @@ hello@spremtlabs.com.
 
 ## Licence
 
-The code is under the MIT licence in `LICENSE`. The name Baby Nap Track and the icon belong to
-Spremt Labs, so a build you publish needs a name and an icon of its own.
+The code is under the MIT licence in `LICENSE`. The name Baby Nap Track, the icon and the store
+pictures in `store/assets` belong to Spremt Labs. A build you publish needs a name, an icon and
+pictures of its own.
 
 Made in Ireland by Spremt Labs.

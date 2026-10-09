@@ -1,0 +1,122 @@
+# Baby Nap Track on an iPhone, from the first open: setup with a date of birth from the iPhone's calendar,
+# the question about usage counts and the free week, the Today screen, the timer and the nap it
+# logs, Settings with the sleep diary, and the help chat.
+# Run by .github/workflows/ios-simulator-proof.yml, which sets PICK to the 15th two months back.
+# A calendar tap that misses is skipped, and Done then keeps today's date, so the walk goes on.
+appId: com.spremtlabs.babysleep
+---
+# The workflow has just installed Baby Nap Track, so it opens empty. Clearing it again cost 54 seconds on
+# 7 October 2026, and the phone then took too long to answer Maestro's next screenshot.
+- launchApp:
+    permissions:
+      notifications: allow
+- extendedWaitUntil:
+    visible: "Let's get your first nap time."
+    timeout: 30000
+- tapOn:
+    id: "name"
+- inputText: "Oisin"
+- takeScreenshot: 01-setup-name
+- tapOn:
+    id: "born"
+- takeScreenshot: 02-setup-calendar-open
+- tapOn:
+    id: "DatePicker.PreviousMonth"
+    optional: true
+- tapOn:
+    id: "DatePicker.PreviousMonth"
+    optional: true
+- tapOn:
+    text: "${PICK}"
+    optional: true
+- takeScreenshot: 02-setup-calendar-picked
+- tapOn: "Done"
+# A new iPhone can show its own tip about sliding across the keyboard over the bottom of the
+# screen, which covered Next on 7 October 2026. Its Continue button closes it.
+- tapOn:
+    text: "Continue"
+    optional: true
+- takeScreenshot: 03-setup-date-picked
+- tapOn: "Next"
+- takeScreenshot: 04-setup-day
+- tapOn: "Next"
+- takeScreenshot: 05-setup-morning
+- tapOn: "Next"
+- takeScreenshot: 06-setup-naps
+- tapOn: "No naps yet"
+# On an iPhone setup then asks about usage counts, and offers the free week when the App Store has
+# the `7-day Trial` item. The walk says no to the counts, so a test run sends PostHog nothing, and
+# Not now to the free week. A simulator build that cannot reach the App Store's items has no free
+# week screen, so that tap is optional.
+- extendedWaitUntil:
+    visible: "Can Baby Nap Track send us counts of how it's used?"
+    timeout: 10000
+- takeScreenshot: 06a-setup-counts
+- tapOn: "No, don't send them"
+- extendedWaitUntil:
+    visible: "Not now"
+    timeout: 5000
+    optional: true
+- takeScreenshot: 06b-setup-free-week
+- tapOn:
+    text: "Not now"
+    optional: true
+- tapOn:
+    text: "Allow"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "timer"
+    timeout: 15000
+- takeScreenshot: 07-today
+- tapOn:
+    id: "timer"
+- extendedWaitUntil:
+    visible: "never on screen"
+    timeout: 3000
+    optional: true
+- takeScreenshot: 08-timer-running
+- tapOn:
+    id: "timer"
+- takeScreenshot: 09-nap-logged
+- scrollUntilVisible:
+    element:
+      text: "Add a sleep you missed"
+    direction: DOWN
+- takeScreenshot: 10-today-list
+- scrollUntilVisible:
+    element:
+      text: "Settings"
+    direction: UP
+- tapOn: "Settings"
+- takeScreenshot: 11-settings
+- scrollUntilVisible:
+    element:
+      text: "Delete everything"
+    direction: DOWN
+- takeScreenshot: 12-settings-end
+- scrollUntilVisible:
+    element:
+      text: "Send the sleep diary"
+    direction: UP
+- tapOn: "Send the sleep diary"
+# The PDF took about 8 seconds on GitHub's simulator on 7 October 2026, and the share panel
+# opened 3 seconds after the picture was taken. Wait for the panel's own Save to Files row.
+- extendedWaitUntil:
+    visible: "Save to Files"
+    timeout: 25000
+    optional: true
+- takeScreenshot: 13-diary-share-panel
+# Opening Baby Nap Track again closes the share panel. Wait for Today before pressing help, then for the
+# help panel's own line before the picture.
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "timer"
+    timeout: 20000
+- tapOn:
+    id: "help"
+- extendedWaitUntil:
+    visible: "A person reads every message."
+    timeout: 10000
+- takeScreenshot: 14-help

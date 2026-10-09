@@ -1,0 +1,28 @@
+name: Check
+
+# The check every change to Baby Nap Track passes before it ships: types, tests, the source
+# rules, and the web build walked in a headless Chrome at phone size.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm install --no-save puppeteer
+
+      - run: npm run check

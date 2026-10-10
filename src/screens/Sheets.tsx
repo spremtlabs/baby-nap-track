@@ -5,7 +5,7 @@ import * as Linking from 'expo-linking'
 import { useEffect, useState } from 'react'
 import { Pressable, Share as ShareSheet, TextInput, View } from 'react-native'
 import { MIN, afterAt, ageText, asLogged, band, dayAt, kindFor, lastAt, morningAt, targetFor, type Out, type Sleep } from '../lib/engine.ts'
-import { chairLine, chairOffered } from '../lib/chair.ts'
+import { chairEarly, chairLine } from '../lib/chair.ts'
 import { EmailSettings } from './Email.tsx'
 import { clampOut, napDraft, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outDraft, outView, savedLine, type NightDraft } from '../lib/model.ts'
 import { IPHONE } from '../lib/phone.ts'
@@ -93,26 +93,24 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
         <Note>Baby Nap Track plans the naps between wake-up and bedtime and keeps count of the day sleep. Most babies at {ageText(baby, now)} sleep about {hours(targetFor(wk) * MIN)} in the day.</Note>
       </Group>
 
-      {/* The chair method, from mock chair-method v4. Offered from six months, as the HSE says. */}
-      {chairOffered(baby, now) ? (
-        <Group title="Chair method">
-          {baby.chair ? (
-            <>
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, paddingVertical: 8 }}>
-                <T size={16}>Tonight</T>
-                <T w="semibold" size={16} style={{ flexShrink: 1, textAlign: 'right' }}>{chairLine(baby.chair, now)}</T>
-              </View>
-              <Note>The chair moves every three nights. If {N} wakes in the night, go back to the chair.</Note>
-              <Link label="Stop the chair method" onPress={() => { st.setChair(() => null); onToast('Chair method stopped.') }} />
-            </>
-          ) : (
-            <>
-              <Note>Sit by the cot while {N} falls asleep, and move the chair closer to the door every three nights.</Note>
-              <Pill label="Start the chair method" onPress={onChair} />
-            </>
-          )}
-        </Group>
-      ) : null}
+      {/* The chair method, from mock chair-method v4. Offered at every age since 1.0.18. */}
+      <Group title="Chair method">
+        {baby.chair ? (
+          <>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 12, paddingVertical: 8 }}>
+              <T size={16}>Tonight</T>
+              <T w="semibold" size={16} style={{ flexShrink: 1, textAlign: 'right' }}>{chairLine(baby.chair, now)}</T>
+            </View>
+            <Note>The chair moves every three nights. If {N} wakes in the night, go back to the chair.</Note>
+            <Link label="Stop the chair method" onPress={() => { st.setChair(() => null); onToast('Chair method stopped.') }} />
+          </>
+        ) : (
+          <>
+            <Note>Sit by the cot while {N} falls asleep, and move the chair closer to the door every three nights.{chairEarly(baby, now) ? ' The HSE suggests it from six months.' : ''}</Note>
+            <Pill label="Start the chair method" onPress={onChair} />
+          </>
+        )}
+      </Group>
 
       <Group title="Baby">
         <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }}>

@@ -31,7 +31,7 @@ Set your baby's usual wake-up, bedtime and the day sleep you're aiming for. The 
 
 The chair method at bedtime
 
-From six months, Baby Nap Track can take you through the chair method of sleep training. You sit by the cot until your baby falls asleep, and every three nights the chair moves closer to the door. You say goodnight and leave the room on night 13.
+Baby Nap Track can take you through the chair method of sleep training. You sit by the cot until your baby falls asleep, and every three nights the chair moves closer to the door. You say goodnight and leave the room on night 13.
 
 At bedtime the app shows where the chair goes tonight and times how long your baby takes to fall asleep. One tap counts each time you get up to pat or shush. In the morning a chart has a bar for every night of the plan. After a hard night the chair can stay where it is one more night.
 

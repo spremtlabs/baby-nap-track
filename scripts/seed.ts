@@ -2,11 +2,15 @@
 // screenshots load it into the web build's storage before the page opens.
 import { MIN } from '../src/lib/engine.ts'
 import { eveningOf } from '../src/lib/chair.ts'
-import { OISIN, at, sleep, week } from '../test/sample.ts'
+import { CIAN, OISIN, at, sleep, week } from '../test/sample.ts'
 
 export const STORE_KEY = 'snug.state.v1'
 
-export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap'): { state: string; now: number } {
+export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'young'): { state: string; now: number } {
+  // A baby of ten weeks, for the chair method in Settings before six months, from 1.0.18.
+  if (scenario === 'young') {
+    return { state: JSON.stringify({ baby: CIAN, sleeps: week(), alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 11, 35) }
+  }
   // A morning nap of 27 minutes, at 9:40am: the two ways to make it up, from 1.0.17.
   if (scenario === 'short-nap') {
     const sleeps = [...week().slice(0, -1), sleep(at(0, 8, 58), at(0, 9, 25), 'nap')]

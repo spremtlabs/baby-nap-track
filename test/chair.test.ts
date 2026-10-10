@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { MIN, engine } from '../src/lib/engine.ts'
-import { answer, askAbout, asleepToast, chairCard, chairChart, chairDay, chairHero, chairLine, chairOffered, chairTap, eveningOf, fellAsleep, hold, newChair, putInCot, ranges, tonight, tripsSoFar, wentOver, type Chair } from '../src/lib/chair.ts'
+import { answer, askAbout, asleepToast, chairCard, chairChart, chairDay, chairEarly, chairHero, chairLine, chairTap, eveningOf, fellAsleep, hold, newChair, putInCot, ranges, tonight, tripsSoFar, wentOver, type Chair } from '../src/lib/chair.ts'
 import { chairScene } from '../src/lib/chairArt.ts'
 import { hero } from '../src/lib/model.ts'
 import { CIAN, OISIN, at, sleep, week } from './sample.ts'
@@ -48,11 +48,21 @@ test('a night held back keeps the chair where it was and moves every later night
   assert.deepEqual(hold(c, t.key, false).held, [])
 })
 
-test('Settings offers it from six months and says which night is next', () => {
-  assert.equal(chairOffered(OISIN, at(0, 12)), true)
-  assert.equal(chairOffered(CIAN, at(0, 12)), false)
+test('Settings knows a baby under six months and says which night is next', () => {
+  assert.equal(chairEarly(OISIN, at(0, 12)), false)
+  assert.equal(chairEarly(CIAN, at(0, 12)), true)
   assert.equal(chairLine(plan(3), at(0, 12)), 'Night 4, halfway to the door')
   assert.equal(chairLine(plan(12), at(0, 12)), 'Night 13, out of the room')
+})
+
+// From 1.0.18 the plan runs at any age. Ten weeks old, 7:50pm, with bedtime at 8pm.
+test('at ten weeks the bedtime tap is the baby going into the cot, with the picture for night 1', () => {
+  const c = plan(0), now = at(0, 19, 50)
+  const day = [sleep(at(-1, 20, 0), at(0, 7, 0), 'night', true), sleep(at(0, 17, 30), at(0, 18, 15), 'nap')]
+  const E = engine({ ...CIAN, chair: c }, day, now)
+  assert.deepEqual(chairTap(E, c, now), { kind: 'cot' })
+  assert.equal(chairHero(E, c, hero(E), now).caption, 'Tap when Cian is in the cot.')
+  assert.equal(chairCard(E, c, now)!.eyebrow, 'Chair method, night 1')
 })
 
 // The evening of a day from the sample week, at 6:50pm with bedtime at 7pm.

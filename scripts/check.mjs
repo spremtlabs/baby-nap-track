@@ -2,7 +2,7 @@
 // source, then the web build of the real app walked in a headless browser at phone size through
 // setup with this morning's nap, the morning, a nap and its timer, Settings, editing a sleep, the 4pm example,
 // the 5 October evening, a stretch with no nap logged, going out, the help chat,
-// the night, the chair method at bedtime, settling and the next morning, last night changed from
+// the night, the chair method at bedtime, settling and the next morning, and at ten weeks, last night changed from
 // the list and from the toast after up for the day, the sleep diary
 // for a consultant printed on A4, the next morning
 // with the night not logged and then added, a phone set up on version 1.0.0, the free week, the
@@ -654,12 +654,23 @@ if (PUPPETEER && !fails.length) {
     await done(m)
     const s = await open('chair-start', seed('morning'))
     await tap(s, 'Settings')
+    await absent(s, 'The HSE suggests it from six months.')
     await tap(s, 'Start the chair method')
     await expect(s, 'Put Oisín in the cot awake.')
     await look(s, 'chair-sheet')
     await tap(s, 'Start tonight')
     await expect(s, 'The chair method starts tonight.')
     await done(s)
+    // From 1.0.18 Settings offers it at every age. A baby of ten weeks gets the HSE's line with it.
+    const y = await open('chair-young', seed('young'))
+    await tap(y, 'Settings')
+    await expect(y, 'The HSE suggests it from six months.')
+    await look(y, 'chair-young-settings')
+    await tap(y, 'Start the chair method')
+    await expect(y, 'Put Cian in the cot awake.')
+    await tap(y, 'Start tonight')
+    await expect(y, 'The chair method starts tonight.')
+    await done(y)
   }
 
   // The parent's email in Settings, for a phone that left it out of setup: a bad address turned

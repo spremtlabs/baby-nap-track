@@ -19,11 +19,20 @@ Nap times from wake windows
 
 ## Keywords
 
-schedule,predictor,toddler,newborn,infant,bedtime,routine,log,timer,naptime,age,month,diary
+schedule,toddler,newborn,infant,bedtime,routine,log,timer,naptime,age,diary,training,chair,method
 
 Apple searches the words in the name and the subtitle already, so the keywords carry the rest of
 what parents type, from the list at the top of `store/listing.md`. `diary` makes `sleep diary` with
 the name. Apple allows 100 characters and refuses another app's name in this field.
+
+`training` makes `sleep training` and `baby sleep training` with the name, and `chair` and `method`
+make `chair method`. Read on 10 October 2026 in the US, UK and Irish stores: the App Store suggests
+`sleep training` and `baby sleep training`, and apps with under 40 ratings sit in the first five
+results for both. It suggests nothing for `chair method`, and every result for it is a chair
+exercise app. Google suggests `chair method sleep training` first for `chair method`. `predictor`
+and `month` came out to make room: the App Store suggests nothing for `nap predictor`, and only
+games for `month old`. These keywords go in with the first iPhone version that has the chair
+method, which is any build from 1.0.11.
 
 ## Promotional text
 
@@ -60,9 +69,12 @@ its name, screenshots and description talk to parents.
 ## Screenshots
 
 `npm run check`, then `node store/shots.mjs --apple`, writes the 6.9 inch iPhone set into
-`store/assets/app-store/`: six at 1290x2796, from the next nap to the sleep diary. Apple scales them
-down for the smaller iPhones, and Baby Nap Track runs on iPhone only, so no iPad set is needed. The help
-button is left out of these six because it floated over a nap's length in four of them.
+`store/assets/app-store/`: eight at 1290x2796, from the next nap to the sleep diary. The chair method
+at bedtime and its morning chart are second and third, as on Play, because the App Store draws the
+first three in its search results. Apple scales them down for the smaller iPhones, and Baby Nap Track
+runs on iPhone only, so no iPad set is needed. The help button is left out of the set because it
+floated over a nap's length in four of them. A version before 1.0.11 has no chair method and takes
+the set without those two.
 
 ## The in-app purchases
 

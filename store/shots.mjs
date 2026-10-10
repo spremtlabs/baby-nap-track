@@ -77,20 +77,19 @@ const sheetTo = (label) => async (page) => {
 }
 
 await shot('01-next-nap', 'morning')
-if (!apple) {
-  // The chair method, from 1.0.11: night 4 at bedtime with the picture, and the chart the next morning.
-  await shot('02-chair-bedtime', 'chair', scrollTo('Bedtime window open'))
-  await shot('03-chair-morning', 'chair-morning', scrollTo('Chair method'))
-}
-await shot(apple ? '02-day-sleep' : '04-day-sleep', 'morning', scrollTo('Day sleep'))
-await shot(apple ? '03-nap-needed' : '05-nap-needed', 'short')
-await shot(apple ? '04-week' : '06-week', 'morning', scrollTo('This week'))
-await shot(apple ? '05-night' : '07-night', 'night')
+// The chair method, from 1.0.11: night 4 at bedtime with the picture, and the chart the next morning.
+// Both stores show them second and third, and the App Store draws the first three in its search results.
+await shot('02-chair-bedtime', 'chair', scrollTo('Bedtime window open'))
+await shot('03-chair-morning', 'chair-morning', scrollTo('Chair method'))
+await shot('04-day-sleep', 'morning', scrollTo('Day sleep'))
+await shot('05-nap-needed', 'short')
+await shot('06-week', 'morning', scrollTo('This week'))
+await shot('07-night', 'night')
 // Settings draws the browser's own date box, which an iPhone never shows. The App Store set shows
 // the part of Settings below it, with sharing and the sleep diary.
 if (!apple) await shot('08-settings', 'morning', tap('Settings'))
-else await shot('06-sleep-diary', 'morning', async (page) => { await tap('Settings')(page); await sheetTo("Share Oisín's sleep")(page) })
+else await shot('08-sleep-diary', 'morning', async (page) => { await tap('Settings')(page); await sheetTo("Share Oisín's sleep")(page) })
 
 await browser.close()
 server.close()
-console.log(`${apple ? 'six' : 'eight'} screenshots in ${out}`)
+console.log(`eight screenshots in ${out}`)

@@ -25,8 +25,9 @@ const STAY = ['by the cot', 'halfway to the door', 'by the door', 'in the hall']
 const MOVE_TO = ['beside the cot', 'halfway to the door', 'to the door', 'into the hall']
 const NIGHTS_AT = 3
 
-// The HSE and Kim West both start it at six months, so Settings offers it from then.
-export const chairOffered = (baby: Baby, now: number) => !!baby.chair || ageWeeks(baby, now) >= 26
+// The HSE and Kim West both start it at six months. Settings offers it at every age since 1.0.18,
+// and tells a parent whose baby is younger what the HSE suggests.
+export const chairEarly = (baby: Baby, now: number) => ageWeeks(baby, now) < 26
 
 const pad = (n: number) => String(n).padStart(2, '0')
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`

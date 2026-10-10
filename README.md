@@ -29,7 +29,7 @@ and an icon of its own.
 - After a short nap, offers two ways to make it up: the next nap sooner, or an earlier bedtime.
 - Shares one log with a partner, a grandparent or a childminder through a link.
 - Makes a sleep diary to send a sleep consultant or a GP.
-- Walks a parent through the chair method from six months, and keeps how long settling took each
+- Walks a parent through the chair method, and keeps how long settling took each
   night.
 
 ## How the nap times are worked out

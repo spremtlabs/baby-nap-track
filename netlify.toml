@@ -1,0 +1,13 @@
+# The Deploy to Netlify button on the README builds the web version of the app with this file and
+# puts it online. The app opens in a phone's browser from the address Netlify gives.
+[build]
+  command = "npx expo export --platform web --output-dir dist"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "24"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

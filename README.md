@@ -9,6 +9,16 @@ the code of the app on [Google Play](https://play.google.com/store/apps/details?
   <img src="store/assets/06-week.png" width="240" alt="A week of day sleep">
 </p>
 
+## Make your own copy
+
+You need no code for this. The button copies the app to a GitHub account of your own, builds the
+web version and puts it online. Open the address it gives you on your phone.
+
+[![Deploy to Netlify](https://www.netlify.com/img/deploy/button.svg)](https://app.netlify.com/start/deploy?repository=https://github.com/spremtlabs/baby-nap-track)
+
+A copy in a browser has no reminders and no note on the lock screen. Give a copy you share a name
+and an icon of its own.
+
 ## What it does
 
 - Gives the next nap time and the window to put the baby down in.

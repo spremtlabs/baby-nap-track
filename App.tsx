@@ -155,6 +155,7 @@ function Main () {
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         {st.state.baby && E
           ? <Today E={E} g={st.gate} onBuy={buy} onWeek={startWeek} onMain={main} onSettings={() => setOpen('settings')} onEdit={openEdit} onNight={() => setOpen('night')} onAdd={addMissed} onMorning={morning} onWake={() => setOpen('wake')} onGap={addGap} onOut={() => setOpen('out')}
+              onWay={(day, pick, by, first) => st.setBaby({ route: { day, pick, by, first }, routeLikes: pick })}
               chair={E.baby.chair} onHold={() => {
                 const c = E.baby.chair
                 if (!c) return

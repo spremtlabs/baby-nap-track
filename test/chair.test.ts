@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { MIN, engine } from '../src/lib/engine.ts'
-import { answer, askAbout, asleepToast, chairCard, chairChart, chairHero, chairLine, chairOffered, chairTap, eveningOf, fellAsleep, hold, newChair, putInCot, ranges, tonight, tripsSoFar, wentOver, type Chair } from '../src/lib/chair.ts'
+import { answer, askAbout, asleepToast, chairCard, chairChart, chairDay, chairHero, chairLine, chairOffered, chairTap, eveningOf, fellAsleep, hold, newChair, putInCot, ranges, tonight, tripsSoFar, wentOver, type Chair } from '../src/lib/chair.ts'
 import { chairScene } from '../src/lib/chairArt.ts'
 import { hero } from '../src/lib/model.ts'
 import { CIAN, OISIN, at, sleep, week } from './sample.ts'
@@ -168,4 +168,16 @@ test('a new plan starts tonight, and the picture draws every place', () => {
     assert.match(svg, /^<svg viewBox="0 28 380 172">/)
     assert.doesNotMatch(svg, /NaN|undefined/)
   }
+})
+
+// The line on Today through the day, from 1.0.17.
+test('through the day Today says which night it is and where the chair goes tonight', () => {
+  const c = plan(3), E = engine(withChair(c), week(), at(0, 11, 35))
+  assert.equal(chairDay(E, c, at(0, 11, 35)), 'Chair method, night 4 of 13. The chair is halfway to the door tonight.')
+  // A night held back makes the plan one night longer.
+  const held = plan(3, [], [0])
+  assert.equal(chairDay(engine(withChair(held), week(), at(0, 11, 35)), held, at(0, 11, 35)), 'Chair method, night 4 of 14. The chair is beside the cot tonight.')
+  const last = plan(12)
+  assert.equal(chairDay(engine(withChair(last), week(), at(0, 11, 35)), last, at(0, 11, 35)), 'Chair method, night 13. Say goodnight and leave the room tonight.')
+  assert.equal(chairDay(E, null, at(0, 11, 35)), null)
 })

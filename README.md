@@ -26,6 +26,7 @@ and an icon of its own.
 - Counts the day's sleep against an aim the parent sets, and says how much nap is still needed
   before bed.
 - Plans the naps around a trip out.
+- After a short nap, offers two ways to make it up: the next nap sooner, or an earlier bedtime.
 - Shares one log with a partner, a grandparent or a childminder through a link.
 - Makes a sleep diary to send a sleep consultant or a GP.
 - Walks a parent through the chair method from six months, and keeps how long settling took each

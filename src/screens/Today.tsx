@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react'
 import { Animated, Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg'
-import { askAbout, chairCard, chairChart, chairHero, tonight, type Chair, type ChairHero, type Cry, type Why } from '../lib/chair.ts'
-import { ageLine, daySleep, hero, todayRows, week, type Ribbon as RibbonData } from '../lib/model.ts'
-import { MIN, atMins, morningAt, type Engine } from '../lib/engine.ts'
+import { askAbout, chairCard, chairChart, chairDay, chairHero, tonight, type Chair, type ChairHero, type Cry, type Why } from '../lib/chair.ts'
+import { ageLine, daySleep, hero, todayRows, week, type Ribbon as RibbonData, type Ways } from '../lib/model.ts'
+import { MIN, atMins, morningAt, type Engine, type Route } from '../lib/engine.ts'
 import type { Gate } from '../lib/shop.ts'
 import { bigTime, plain, runParts } from '../lib/words.ts'
 import { F } from '../theme.ts'
@@ -37,13 +37,15 @@ type Props = {
   onTrip: () => void
   onCry: (night: string, c: Cry) => void
   onWhy: (night: string, w: Why) => void
+  // After a short nap, the way the parent picks to make it up.
+  onWay: (day: number, pick: Route, by: number, first: Route) => void
 }
 
-export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, onEdit, onNight, onAdd, onMorning, onWake, onGap, onOut, chair, onHold, onTrip, onCry, onWhy }: Props) {
+export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, onEdit, onNight, onAdd, onMorning, onWake, onGap, onOut, chair, onHold, onTrip, onCry, onWhy, onWay }: Props) {
   const t = useTheme(), insets = useSafeAreaInsets()
   const scroll = useRef(new Animated.Value(0)).current
   const h = chairHero(E, chair, hero(E, g), E.now), unknown = E.unknownMorning()
-  const card = chairCard(E, chair, E.now), chart = unknown ? null : chairChart(E, chair, E.now)
+  const card = chairCard(E, chair, E.now), chart = unknown ? null : chairChart(E, chair, E.now), chairLine = chairDay(E, chair, E.now)
   // Tonight's question sits under the timer; last night's waits in the chart in the morning.
   const ask = askAbout(E, chair, E.now), askTonight = !!ask && !!chair && ask.night === tonight(chair, E.now).key
   const askCard = ask ? <AskCard ask={ask} onCry={(c) => onCry(ask.night, c)} onWhy={(w) => onWhy(ask.night, w)} /> : null
@@ -80,6 +82,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
           <Pressable accessibilityRole="button" onPress={onSettings} hitSlop={12}><T size={15} color={t.muted}>Settings</T></Pressable>
         </View>
 
+        {chairLine ? <View testID="chair-day" style={{ marginTop: -14, marginBottom: 22 }}><T size={14} color={t.muted} style={{ lineHeight: 20 }}>{chairLine}</T></View> : null}
         <Eyebrow hot={h.hot}>{h.eyebrow}</Eyebrow>
         {h.ask ? (
           <>
@@ -104,6 +107,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
                 <View style={{ marginTop: 8, marginBottom: 14 }}><Big parts={h.big} size={86} /></View>
                 <T size={17} style={{ lineHeight: 25, maxWidth: 340 }}>{h.sub}</T>
                 {h.note ? <T size={14} color={t.muted} style={{ marginTop: 14 }}>{h.note}</T> : null}
+                {h.ways ? <WaysCard ways={h.ways} onPick={(id) => onWay(h.ways!.day, id, h.ways!.by, h.ways!.opts[0].id)} /> : null}
               </>
             ) : null}
             <TimerBlock h={h} onMain={onMain} />
@@ -181,6 +185,26 @@ function Timer ({ run, caption, onPress, settling }: { run: number | null; capti
         <T size={15} color={t.muted} style={{ marginTop: 2, lineHeight: 21 }}>{caption}</T>
       </View>
     </Pressable>
+  )
+}
+
+// After a short nap: two ways to make it up, each with the next nap and tonight's bedtime. A tap
+// picks one and the day follows it.
+function WaysCard ({ ways, onPick }: { ways: Ways; onPick: (id: Route) => void }) {
+  const t = useTheme()
+  return (
+    <View testID="ways" style={{ marginTop: 22 }}>
+      <T size={15} color={t.muted} style={{ lineHeight: 21, marginBottom: 10 }}>{ways.say}</T>
+      <View style={{ gap: 10 }}>
+        {ways.opts.map((o) => (
+          <Pressable key={o.id} testID={`way-${o.id}`} accessibilityRole="button" accessibilityLabel={o.title} accessibilityHint={o.line} accessibilityState={{ selected: o.on }} onPress={() => onPick(o.id)}
+            style={({ pressed }) => ({ paddingVertical: 14, paddingHorizontal: 18, borderRadius: 18, backgroundColor: t.soft, borderWidth: 2, borderColor: o.on ? t.ink : 'transparent', opacity: pressed ? 0.8 : 1 })}>
+            <T w="semibold" size={17}>{o.title}</T>
+            <T size={15} color={t.muted} style={{ marginTop: 2, lineHeight: 21 }}>{o.line}</T>
+          </Pressable>
+        ))}
+      </View>
+    </View>
   )
 }
 

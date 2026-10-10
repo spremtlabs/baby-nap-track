@@ -577,6 +577,22 @@ if (PUPPETEER && !fails.length) {
     await done(p)
   }
 
+  // A short morning nap, from 1.0.17: two ways to make it up, and the day follows the one tapped.
+  {
+    const p = await open('short-nap', seed('short-nap'))
+    await expect(p, 'That nap was short. Here are two ways to make it up.')
+    await expect(p, 'Nap at 11:25am, then one more. Bedtime 7pm.')
+    await expect(p, 'Put Oisín down between 11:15 and 11:35am.')
+    await look(p, 'short-nap')
+    await tap(p, 'Earlier bedtime')
+    await expect(p, 'Put Oisín down between 11:35 and 11:55am.')
+    await expect(p, 'Nap at 11:45am, then one more. Bedtime 6:20pm.')
+    await look(p, 'short-nap-bed')
+    await tap(p, 'Nap sooner')
+    await expect(p, 'Put Oisín down between 11:15 and 11:35am.')
+    await done(p)
+  }
+
   // The night, dark.
   {
     const p = await open('night', seed('night'))
@@ -632,7 +648,7 @@ if (PUPPETEER && !fails.length) {
     await expect(m, 'You went over twice.')
     await expect(m, 'There was some crying.')
     await expect(m, 'Tonight the chair stays halfway to the door.')
-    await absent(m, 'Chair method, night')
+    await expect(m, 'Chair method, night 5 of 13. The chair is halfway to the door tonight.')
     await scrollTo(m, 'Chair method')
     await look(m, 'chair-morning')
     await done(m)
@@ -951,4 +967,4 @@ if (fails.length) {
   for (const f of fails) console.log('  ' + f)
   process.exit(1)
 }
-console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings, adding a sleep, the 4pm example, the night, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, and what PostHog hears at each step')
+console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings, adding a sleep, the 4pm example, a short nap and the two ways to make it up, the night, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, and what PostHog hears at each step')

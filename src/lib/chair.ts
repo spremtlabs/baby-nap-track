@@ -129,6 +129,16 @@ export function chairHero (E: Engine, c: Chair | null | undefined, h: Hero, now:
   return h
 }
 
+// The line on Today through the day while the plan runs: which night it is, of how many, and where
+// the chair goes tonight. It gives way to the picture at bedtime.
+export function chairDay (E: Engine, c: Chair | null | undefined, now: number): string | null {
+  const ph = E.phase()
+  if (!c || (ph !== 'day' && ph !== 'nap') || E.unknownMorning() || chairCard(E, c, now)) return null
+  const t = tonight(c, now), last = nights(c, t.n + 4 * NIGHTS_AT + 4).find((x) => x.place === 4)
+  if (t.place === 4) return `Chair method, night ${t.n}. Say goodnight and leave the room tonight.`
+  return `Chair method, night ${t.n}${last ? ` of ${last.n}` : ''}. The chair is ${PLACES[t.place]} tonight.`
+}
+
 // The picture on Today: at bedtime, while settling, and when the baby wakes in the night.
 export type Card = { eyebrow: string; place: number; done: number; ranges: string[]; hold: string; held: boolean; line: string; key: string }
 export function chairCard (E: Engine, c: Chair | null | undefined, now: number): Card | null {

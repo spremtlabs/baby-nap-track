@@ -3,7 +3,7 @@
 // engine. A screen that says something else fails here before it reaches a phone.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { afterAt, asLogged, engine, HOUR, kindFor, lastAt, MIN, morningAt, type Sleep } from '../src/lib/engine.ts'
+import { afterAt, asLogged, dayFloor, engine, HOUR, kindFor, lastAt, MIN, morningAt, type Sleep } from '../src/lib/engine.ts'
 import { daySleep, gapDraft, hero, mainAction, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outView, reminder, savedLine, sleepNotice, todayRows, week as weekOf } from '../src/lib/model.ts'
 import { NO_SHOP, TRIAL_NAME, TRIAL_SKU, gate, isLocked, outcomeLine, setupLine, shopGroup, trialEnd, trialNote, weekLine, weekScreen, type Paid } from '../src/lib/shop.ts'
 import { dur, fmt, plain, runParts } from '../src/lib/words.ts'
@@ -561,4 +561,32 @@ test('a wake-up typed in during the night does not make a second day on the week
   assert.equal(new Set(labels).size, labels.length)
   assert.ok(!w.rows.some((r) => !r.today && r.value === 0))
   assert.equal(w.rows.length, 7)
+})
+
+// After a short nap the parent picks how to make it up, from 1.0.17.
+test('a 27 minute nap gives two ways to make it up, and the day follows the one picked', () => {
+  const log = [...week().slice(0, -1), sleep(at(0, 8, 58), at(0, 9, 25), 'nap')], now = at(0, 9, 40)
+  const h = hero(engine(OISIN, log, now))
+  assert.equal(plain(h.big), '11:25 am')
+  assert.equal(h.ways?.say, 'That nap was short. Here are two ways to make it up.')
+  assert.deepEqual(h.ways?.opts, [
+    { id: 'sooner', title: 'Nap sooner', line: 'Nap at 11:25am, then one more. Bedtime 7pm.', on: true },
+    { id: 'bed', title: 'Earlier bedtime', line: 'Nap at 11:45am, then one more. Bedtime 6:20pm.', on: false },
+  ])
+  const picked = { ...OISIN, route: { day: dayFloor(OISIN, now), pick: 'bed' as const, by: h.ways!.by }, routeLikes: 'bed' as const }
+  const E = engine(picked, log, now), b = hero(E)
+  assert.equal(plain(b.big), '11:45 am')
+  assert.equal(fmt(E.budget().bedT), '6:20pm')
+  assert.deepEqual(b.ways?.opts.map((o) => [o.id, o.on]), [['bed', true], ['sooner', false]])
+  // The two stay where they were at the tap for the rest of the day.
+  assert.deepEqual(hero(engine({ ...picked, route: { ...picked.route, first: 'sooner' } }, log, now)).ways?.opts.map((o) => [o.id, o.on]), [['sooner', false], ['bed', true]])
+  // The pick is for the day it was made on. The next day starts as usual.
+  assert.equal(fmt(engine({ ...picked, route: { ...picked.route, day: picked.route.day - 864e5 } }, log, now).budget().bedT), '7pm')
+})
+
+test('a nap of 40 minutes or more gives no choice, and the chair method puts earlier bedtime first', () => {
+  assert.equal(hero(engine(OISIN, week(), at(0, 11, 35))).ways, null)
+  const log = [...week().slice(0, -1), sleep(at(0, 8, 58), at(0, 9, 25), 'nap')]
+  const chair = { from: '2020-01-01', held: [], settles: [], inCot: null }
+  assert.deepEqual(hero(engine({ ...OISIN, chair }, log, at(0, 9, 40))).ways?.opts.map((o) => o.id), ['bed', 'sooner'])
 })

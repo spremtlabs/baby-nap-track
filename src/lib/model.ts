@@ -1,6 +1,6 @@
 // What each part of the Today screen says, worked out from the engine. The screens only draw
 // these, so the wording approved in mock v4 is tested here once, in plain strings.
-import { DAY, HOUR, MIN, ageText, ageWeeks, atMins, band, dayAt, hourOf, isMark, napHours, round5, type Baby, type Engine, type Out, type Sleep, type Window } from './engine.ts'
+import { DAY, HOUR, MIN, ageText, ageWeeks, atMins, band, dayAt, hourOf, isMark, napHours, round5, type Baby, type Engine, type Out, type Route, type Sleep, type Window } from './engine.ts'
 import { isLocked, lockedHero, offerHero, trialNote, type Gate } from './shop.ts'
 import { bigDur, bigTime, dur, fmt, hours, range, runParts, tallyDur, times, type Part } from './words.ts'
 
@@ -32,11 +32,31 @@ export type Hero = {
   // While a nap runs late in the day: the time to wake the baby, so the naps end when the parent
   // set them to. `now` once that time has come.
   wake: { at: number; now: boolean; left: string } | null
+  // After a short nap: the two ways to make it up, the one the parent picked last time first, and
+  // earlier bedtime first while the chair method runs.
+  ways: Ways | null
+}
+export type Ways = { say: string; day: number; by: number; opts: { id: Route; title: string; line: string; on: boolean }[] }
+
+function ways (E: Engine): Ways | null {
+  const s = E.shortNap()
+  if (!s) return null
+  const more = (n: number) => (n ? `, then ${n === 1 ? 'one more' : `${n} more`}` : '')
+  const line = (w: { c: number | null; more: number; bed: number }) => `${w.c == null ? 'No more naps' : `Nap at ${fmt(w.c)}${more(w.more)}`}. Bedtime ${fmt(w.bed)}.`
+  const on = s.pick ?? 'sooner'
+  const opts: Ways['opts'] = [
+    { id: 'sooner', title: 'Nap sooner', line: line(s.sooner), on: on === 'sooner' },
+    { id: 'bed', title: 'Earlier bedtime', line: line(s.bed), on: on === 'bed' },
+  ]
+  const today = E.baby.route && E.baby.route.day === s.day ? E.baby.route : null
+  const first: Route = E.baby.chair ? 'bed' : today?.first ?? E.baby.routeLikes ?? 'sooner'
+  if (first === 'bed') opts.reverse()
+  return { say: 'That nap was short. Here are two ways to make it up.', day: s.day, by: s.by, opts }
 }
 
 export function hero (E: Engine, g: Gate = NONE): Hero {
   const N = E.baby.name, ph = E.phase(), c = E.cur(), now = E.now
-  const h: Hero = { eyebrow: '', ask: '', hot: false, big: [], sub: '', note: '', cta: '', upForDay: false, glow: 0, run: null, caption: '', outLink: '', heading: '', buy: '', shop: trialNote(g, now), wake: null }
+  const h: Hero = { eyebrow: '', ask: '', hot: false, big: [], sub: '', note: '', cta: '', upForDay: false, glow: 0, run: null, caption: '', outLink: '', heading: '', buy: '', shop: trialNote(g, now), wake: null, ways: null }
   if (ph === 'day' && E.dayStart().unknown) {
     Object.assign(h, { eyebrow: 'Today', ask: `When did ${N} wake up this morning?`, sub: isLocked(g) ? '' : 'Baby Nap Track works out the next nap from there.', cta: 'Save' })
   } else if (ph === 'day' && (g.kind === 'locked' || g.kind === 'offer')) {
@@ -70,6 +90,7 @@ export function hero (E: Engine, g: Gate = NONE): Hero {
         sub: w.bed ? `The window closed at ${fmt(w.e)}. Put ${N} down as soon as you can.` : `The window closed at ${fmt(w.e)}. Put ${N} down as soon as you can. A nap in the car or the buggy counts.`,
       })
       h.note = now - lw < MIN ? 'Just woke' : `Awake ${dur(now - lw)}`
+      h.ways = ways(E)
     }
   } else if (ph === 'nap' && c) {
     Object.assign(h, { eyebrow: 'Napping', big: runParts(now - c.s).parts, run: c.s, cta: `${N} woke up`, sub: `Fell asleep at ${fmt(c.s)}.` })

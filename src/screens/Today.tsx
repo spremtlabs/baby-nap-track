@@ -8,7 +8,7 @@ import { askAbout, chairCard, chairChart, chairHero, tonight, type Chair, type C
 import { ageLine, daySleep, hero, todayRows, week, type Ribbon as RibbonData } from '../lib/model.ts'
 import { MIN, atMins, morningAt, type Engine } from '../lib/engine.ts'
 import type { Gate } from '../lib/shop.ts'
-import { plain, runParts } from '../lib/words.ts'
+import { bigTime, plain, runParts } from '../lib/words.ts'
 import { F } from '../theme.ts'
 import { TimeField } from '../ui/TimeField.tsx'
 import { Big, Button, Eyebrow, Link, T, useTheme } from '../ui/kit.tsx'
@@ -107,6 +107,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
               </>
             ) : null}
             <TimerBlock h={h} onMain={onMain} />
+            {h.wake ? <WakeCard w={h.wake} name={E.baby.name} /> : null}
             {h.settling ? <TripsRow n={h.trips ?? 0} onPress={onTrip} /> : null}
             {askTonight ? askCard : null}
             {card ? <ChairCard card={card} onHold={onHold} /> : null}
@@ -180,6 +181,21 @@ function Timer ({ run, caption, onPress, settling }: { run: number | null; capti
         <T size={15} color={t.muted} style={{ marginTop: 2, lineHeight: 21 }}>{caption}</T>
       </View>
     </Pressable>
+  )
+}
+
+// Under the timer while a nap runs late: the time to wake the baby so the naps end when the
+// parent set them to, from mock sleep-approach v3.
+function WakeCard ({ w, name }: { w: NonNullable<ChairHero['wake']>; name: string }) {
+  const t = useTheme()
+  return (
+    <View testID="wake-card" style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 22, paddingVertical: 14, paddingHorizontal: 18, borderRadius: 18, backgroundColor: t.soft }}>
+      <View>
+        <T size={14} color={t.muted}>{w.now ? 'Optional wake' : 'Optional wake at'}</T>
+        {w.now ? <T w="light" size={32} style={{ lineHeight: 38 }}>Now</T> : <Big parts={bigTime(w.at)} size={32} unit={14} />}
+      </View>
+      <T size={15} color={t.muted} style={{ flexShrink: 1, textAlign: 'right' }}>{w.left}</T>
+    </View>
   )
 }
 

@@ -43,15 +43,29 @@ test('her 4pm example: the whole amount he still needs, now', () => {
   assert.equal(s.say, 'Oisín needs 1 h 5 min more to make 3 hours.')
 })
 
-test('a nap after 4pm runs on, and the app never says to wake him', () => {
+test('a nap after 4pm gets a time to wake Oisín at the end of the naps, 5pm for a 7pm bedtime', () => {
   const log = [...week(true), sleep(at(0, 16, 0), null, 'nap')]
-  const at415 = screen(log, at(0, 16, 15))
-  assert.equal(at415.eyebrow, 'Napping')
-  assert.equal(at415.sub, 'Fell asleep at 4pm.')
-  assert.equal(at415.say, '50 min to go before bed at 7pm.')
-  const at5 = screen(log, at(0, 17, 5))
-  assert.equal(at5.sub, 'Fell asleep at 4pm.')
-  assert.equal(at5.say, 'Oisín has had 3 hours of day sleep today.')
+  const E = engine(OISIN, log, at(0, 16, 15))
+  const h = hero(E)
+  assert.equal(h.eyebrow, 'Napping')
+  assert.equal(h.sub, 'Fell asleep at 4pm.')
+  assert.deepEqual(h.wake, { at: at(0, 17, 0), now: false, left: 'in 45 min' })
+  assert.equal(daySleep(E).say, "Oisín's day sleep comes to 2 h 55 min with a wake-up at 5pm.")
+  assert.ok(todayRows(E).rows.some((r) => r.title === 'Optional wake' && r.right === '5pm'))
+  assert.deepEqual(reminder(E, 15), { at: at(0, 17, 0), title: 'Optional wake', body: 'Some parents wake at this point to leave enough of a gap before bedtime. Oisín has slept 1 h and bedtime is 7pm.' })
+  assert.equal(sleepNotice(E)?.body, 'Fell asleep at 4pm. Optional wake at 5pm.')
+  const at5 = engine(OISIN, log, at(0, 17, 5))
+  assert.deepEqual(hero(at5).wake, { at: at(0, 17, 0), now: true, left: 'Bedtime is 7pm' })
+  assert.equal(todayRows(at5).rows.find((r) => r.title === 'Optional wake')?.right, 'now')
+})
+
+test('a parent who sets no naps after 5:15pm gets 5:15pm, and a morning nap gets no wake time', () => {
+  const baby = { ...OISIN, napsEnd: 17 * 60 + 15 }
+  const log = [...week(true), sleep(at(0, 15, 30), null, 'nap')]
+  assert.equal(hero(engine(baby, log, at(0, 16, 0))).wake?.at, at(0, 17, 15))
+  const morning = [...week(true).filter((x) => x.s < at(0, 9, 0)), sleep(at(0, 9, 0), null, 'nap')]
+  assert.equal(hero(engine(OISIN, morning, at(0, 9, 30))).wake, null)
+  assert.equal(engine(OISIN, morning, at(0, 9, 30)).wakeAt(), null)
 })
 
 test('too late for a nap: an early bedtime, then now, then the window closed', () => {
@@ -88,8 +102,7 @@ test('the night: the current stretch, and the morning question', () => {
   assert.equal(todayRows(E).heading, 'Yesterday and tonight')
 })
 
-test('nothing on any screen says to wake the baby, and no em dash anywhere', () => {
-  const bad = /\bwake (him|her|them|oisín)\b|\bwake .* (by|now)\b|\bup by\b|—/i
+test('no em dash on any screen through the day', () => {
   for (const shortDay of [false, true]) {
     for (let m = 6 * 60 + 55; m < 20 * 60; m += 15) {
       const now = at(0, Math.floor(m / 60), m % 60)
@@ -97,7 +110,7 @@ test('nothing on any screen says to wake the baby, and no em dash anywhere', () 
         const E = engine(OISIN, log, now)
         const r = reminder(E, 15)
         const words = [hero(E).sub, hero(E).eyebrow, hero(E).ask, daySleep(E).say, ...todayRows(E).rows.flatMap((x) => [x.title, x.sub ?? '', x.right]), r?.title ?? '', r?.body ?? '']
-        for (const w of words) assert.doesNotMatch(w, bad, `at ${fmt(now)}: ${w}`)
+        for (const w of words) assert.doesNotMatch(w, /—/, `at ${fmt(now)}: ${w}`)
       }
     }
   }

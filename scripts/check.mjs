@@ -39,8 +39,6 @@ for (const p of app) {
   if (/test\/sample|scripts\/seed/.test(body)) fail(p, 'imports the sample baby. The app starts empty.')
   if (/—/.test(body)) fail(p, 'has an em dash')
   if (/successfully/i.test(body)) fail(p, 'says successfully. The toast is the success.')
-  // The app never tells a parent to wake the baby.
-  for (const m of body.matchAll(/[`'"][^`'"\n]*\b(wake (him|her|them|\$\{N\}|\$\{name\})|wake .* (by|now)|up by)\b[^`'"\n]*[`'"]/gi)) fail(p, `tells a parent to wake the baby: ${m[0]}`)
   if (/Newsreader|serif/i.test(body)) fail(p, 'uses a serif. The app is one sans.')
   // The app was called Snug until 8 October 2026.
   if (/\bSnug\b/.test(body.replace(/\/\/.*$|\/\*[\s\S]*?\*\//gm, ''))) fail(p, 'says Snug. The app is called Baby Nap Track.')

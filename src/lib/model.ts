@@ -29,11 +29,14 @@ export type Hero = {
   buy: string
   // The free week's last two days.
   shop: string
+  // While a nap runs late in the day: the time to wake the baby, so the naps end when the parent
+  // set them to. `now` once that time has come.
+  wake: { at: number; now: boolean; left: string } | null
 }
 
 export function hero (E: Engine, g: Gate = NONE): Hero {
   const N = E.baby.name, ph = E.phase(), c = E.cur(), now = E.now
-  const h: Hero = { eyebrow: '', ask: '', hot: false, big: [], sub: '', note: '', cta: '', upForDay: false, glow: 0, run: null, caption: '', outLink: '', heading: '', buy: '', shop: trialNote(g, now) }
+  const h: Hero = { eyebrow: '', ask: '', hot: false, big: [], sub: '', note: '', cta: '', upForDay: false, glow: 0, run: null, caption: '', outLink: '', heading: '', buy: '', shop: trialNote(g, now), wake: null }
   if (ph === 'day' && E.dayStart().unknown) {
     Object.assign(h, { eyebrow: 'Today', ask: `When did ${N} wake up this morning?`, sub: isLocked(g) ? '' : 'Baby Nap Track works out the next nap from there.', cta: 'Save' })
   } else if (ph === 'day' && (g.kind === 'locked' || g.kind === 'offer')) {
@@ -70,6 +73,8 @@ export function hero (E: Engine, g: Gate = NONE): Hero {
     }
   } else if (ph === 'nap' && c) {
     Object.assign(h, { eyebrow: 'Napping', big: runParts(now - c.s).parts, run: c.s, cta: `${N} woke up`, sub: `Fell asleep at ${fmt(c.s)}.` })
+    const wa = isLocked(g) ? null : E.wakeAt()
+    if (wa != null) h.wake = { at: wa, now: now >= wa, left: now >= wa ? `Bedtime is ${fmt(E.budget().bedT)}` : `in ${dur(wa - now)}` }
   } else if (ph === 'night' && c) {
     const segs = E.nightSegs(), wakes = segs.length - 1
     Object.assign(h, {
@@ -118,11 +123,14 @@ export function daySleep (E: Engine, g: Gate = NONE): DaySleep {
     else if (B.rem < 5 * MIN) say = `${N} has had ${hours(B.target)} of day sleep today.`
     else if (mk && mk.kind === 'late') say = `${N} is ${dur(B.rem)} short of ${hours(B.target)} today.`
     else if (mk) say = `${N} needs ${dur(B.rem)} more to make ${hours(B.target)}.`
+    else if (E.wakeAt() != null && E.wakeAt()! > now) say = `${N}'s day sleep comes to ${dur(so + E.wakeAt()! - now)} with a wake-up at ${fmt(E.wakeAt()!)}.`
     else if (E.cur()) say = `${dur(B.rem)} to go before bed at ${fmt(B.bedT)}.`
     else if (pl.length > 1) say = `${dur(B.rem)} to go, across ${pl.length} more naps.`
     else if (pl.length === 1) say = `${dur(B.rem)} to go. Aim for that in the next nap.`
     else say = `${dur(B.rem)} to go before bed at ${fmt(B.bedT)}.`
     blocks = naps.map((x) => ({ s: x.s, e: x.e ?? now, run: x.e == null }))
+    const wa = lock ? null : E.wakeAt()
+    if (wa != null && wa > now) blocks.push({ s: now, e: wa, plan: true })
     for (const [a, z] of E.gapsIn(ds.t, null, naps.filter((x) => x.e != null))) blocks.push({ s: a, e: z, gap: true })
     if (outBlock) blocks.unshift(outBlock)
     for (const p of pl) {
@@ -198,6 +206,8 @@ export function todayRows (E: Engine, g: Gate = NONE): { heading: string; rows: 
       ? { at: x.s, mark: 'done', title: 'Napping', sub: `since ${fmt(x.s)}`, right: dur(now - x.s), edit: x.id }
       : { at: x.s, mark: 'done', title: 'Nap', sub: range(x.s, x.e, ' to '), right: dur(x.e - x.s), edit: x.id })
   }
+  const wa = lock ? null : E.wakeAt()
+  if (wa != null) rows.push({ at: Math.max(wa, now), mark: 'next', title: 'Optional wake', sub: 'Some parents wake now to leave a gap before bedtime', right: now >= wa ? 'now' : fmt(wa) })
   for (const gp of E.gapsIn(ds.t, null, naps.filter((x) => x.e != null))) rows.push(gapRow(gp))
   ;(lock ? [] : E.planNaps()).forEach((p, j) => {
     if (p.mk) rows.push({ at: now, mark: 'next', title: 'Nap needed', sub: p.mk.kind === 'by' ? `down by ${fmt(p.mk.by)}` : 'now', right: dur(p.aim) })
@@ -326,12 +336,16 @@ export function mainAction (E: Engine): Action {
 export function sleepNotice (E: Engine): { title: string; body: string } | null {
   const N = E.baby.name, ph = E.phase(), c = E.cur()
   if (!c) return null
-  if (ph === 'nap') return { title: `${N} is napping`, body: `Fell asleep at ${fmt(c.s)}.` }
+  const wa = E.wakeAt()
+  if (ph === 'nap') return { title: `${N} is napping`, body: wa != null ? `Fell asleep at ${fmt(c.s)}. Optional wake at ${fmt(wa)}.` : `Fell asleep at ${fmt(c.s)}.` }
   return { title: `${N} is asleep`, body: E.nightSegs().length > 1 ? `Back down at ${fmt(c.s)}.` : `Down for the night at ${fmt(c.s)}.` }
 }
 
-// The reminder to schedule: the next window, less the lead time. Nothing overnight.
+// The reminder to schedule: the next window, less the lead time, or the time to wake the baby
+// from a nap running late. Nothing overnight.
 export function reminder (E: Engine, leadMin: number): { at: number; title: string; body: string } | null {
+  const wa = E.wakeAt(), c = E.cur()
+  if (wa != null && c) return { at: wa, title: 'Optional wake', body: `Some parents wake at this point to leave enough of a gap before bedtime. ${E.baby.name} has slept ${dur(wa - c.s)} and bedtime is ${fmt(E.budget().bedT)}.` }
   if (E.phase() !== 'day' || E.dayStart().unknown) return null
   const N = E.baby.name, mk = E.makeUp(), p = E.plan()[0]
   if (mk && mk.kind === 'by') return { at: mk.by - leadMin * MIN, title: `${N} needs a nap`, body: `Get ${N} down by ${fmt(mk.by)} for ${dur(mk.need)}. A nap in the car or the buggy counts.` }

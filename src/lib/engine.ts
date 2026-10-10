@@ -33,7 +33,14 @@ export type Baby = {
   target: number // day sleep to aim for, minutes
   // The chair method, while it runs. It rides here so a shared log carries it to every phone.
   chair?: Chair | null
+  // No nap after this, minutes after midnight, so bedtime can come on time or early. Unset, it is
+  // bedtime less the shortest wake window for the age. A nap still running then gets a time to wake.
+  napsEnd?: number | null
 }
+
+// The last moment a nap runs to on the day of t, from the bedtime of that day.
+export const napsEndOf = (baby: Baby, bedT: number, wks: number) =>
+  baby.napsEnd != null ? atMins(bedT - 12 * HOUR, baby.napsEnd) : bedT - band(wks).min * MIN
 
 
 // A window to put the baby down. A plan for going out adds how long the nap is planned to run,
@@ -209,12 +216,12 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
      are logged, a short nap brings the next one forward, and the naps fit between the usual
      wake-up and the bedtime the parent set. */
   function predict (k: number, from: number, prevNap: number | null): Window {
-    const wks = ageAt(from), b = band(wks), bedT = bedOf(from)
+    const wks = ageAt(from), b = band(wks), bedT = bedOf(from), cut = napsEndOf(baby, bedT, wks)
     const bedWin = (): Window => ({ k, bed: true, s: bedT - 15 * MIN, c: bedT, e: bedT + 15 * MIN })
     if (k >= b.naps) {
       if ((bedT - from) / MIN > b.max * 1.15) {
         const c = round5(Math.min(from + b.max * MIN, Math.max(from + b.min * 0.85 * MIN, bedT - (b.min * 1.1 + 30) * MIN)))
-        if (c + 30 * MIN <= bedT - b.min * MIN) return { k, cat: true, s: c - 10 * MIN, c, e: c + 10 * MIN }
+        if (c + 30 * MIN <= cut) return { k, cat: true, s: c - 10 * MIN, c, e: c + 10 * MIN }
       }
       return bedWin()
     }
@@ -224,7 +231,7 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     len = Math.max(b.min * 0.85, Math.min(b.max * 1.1, len))
     if (prevNap != null && prevNap < 40 && wks >= 12) len *= 0.85
     const c = round5(from + len * MIN)
-    if (c + (napLen(k) + b.min * 0.9) * MIN > bedT) return bedWin()
+    if (c + (napLen(k) + b.min * 0.9) * MIN > bedT || c + 20 * MIN > cut) return bedWin()
     const half = (p.n < 3 ? 15 : Math.max(5, Math.round(len * 0.08 / 5) * 5)) * MIN
     return { k, s: c - half, c, e: c + half }
   }
@@ -347,14 +354,14 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     const ds = dayStart(), naps = napsSince(ds.t)
     const so = naps.reduce((a, x) => a + (x.e ?? now) - x.s, 0), target = baby.target * MIN
     const rem = Math.max(0, target - so), bedT = bedOf(ds.t), b = band(ageAt(now))
-    const wakeBy = bedT - b.min * MIN
+    const wakeBy = napsEndOf(baby, bedT, ageAt(now))
     return { so, target, rem, bedT, wakeBy, latest: wakeBy - rem, b }
   }
   type Budget = ReturnType<typeof budget>
   type MakeUp = { kind: 'by'; need: number; by: number; B: Budget } | { kind: 'now'; need: number; B: Budget } | { kind: 'late'; early: number; B: Budget }
 
   // The make-up nap: when the windows ahead cannot reach the day's aim, how much sleep is still
-  // needed and when he has to be down. It never says to wake him.
+  // needed and when the baby has to be down to finish by the end of the naps.
   function makeUp (): MakeUp | null {
     if (phase() !== 'day' || dayStart().unknown || activeOut()) return null
     const B = budget()
@@ -366,6 +373,15 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     if (now < by && !(naps.length && now > naps[0].e)) return { kind: 'by', need: B.rem, by, B }
     if (B.wakeBy - now >= 20 * MIN) return { kind: 'now', need: B.rem, B }
     return { kind: 'late', early: B.bedT - 30 * MIN, B }
+  }
+
+  // The time to wake the baby from the nap running now: the end of the day's naps. Null in the
+  // morning, when that is more than three hours off, and for a nap that started after it.
+  function wakeAt (): number | null {
+    const c = cur()
+    if (phase() !== 'nap' || !c || dayStart().unknown) return null
+    const t = budget().wakeBy
+    return c.s < t && t - now <= 3 * HOUR ? t : null
   }
 
   /* The naps still to come today, with how long to aim for in each. */
@@ -434,7 +450,7 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
 
   return {
     baby, sleeps, now, out,
-    cur, phase, dayStart, unknownMorning, napsSince, nightSegs, bedOf, pastDays, napLen, plan, planNormal, lastWake, budget, makeUp, planNaps, theme, morning,
+    cur, phase, dayStart, unknownMorning, napsSince, nightSegs, bedOf, pastDays, napLen, plan, planNormal, lastWake, budget, makeUp, wakeAt, planNaps, theme, morning,
     activeOut, outPlan, nightDay, gapsIn, lastNight,
     band: () => band(ageAt(now)),
     age: () => ageAt(now),

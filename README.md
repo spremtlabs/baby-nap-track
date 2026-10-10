@@ -27,7 +27,8 @@ the code of the app on [Google Play](https://play.google.com/store/apps/details?
 five short naps a day for a newborn to one long nap for a toddler, in `BANDS`. A baby born early
 goes by the due date. Once three days are logged, the times come mostly from the baby's own naps.
 A short nap brings the next one sooner, and late in the day the app suggests an earlier bedtime in
-place of another nap. The app never tells a parent to wake a baby.
+place of another nap. A nap still going at the end of the day's naps gets a time to wake the
+baby, bedtime less the shortest wake window unless the parent sets another in Settings.
 
 ## Run it
 
@@ -67,7 +68,8 @@ pull request here runs it too.
 
 ## Rules the code keeps
 
-- The app never tells a parent to wake the baby.
+- A nap still going at the end of the day's naps gets a time to wake the baby. Settings holds
+  that time as `No naps after`.
 - A screen calls the baby by name. A pronoun in a string fails the check.
 - Every sentence the Today screen says is worked out in `src/lib/model.ts`, and the screens only
   draw it.

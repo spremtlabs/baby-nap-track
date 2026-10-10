@@ -51,6 +51,9 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
   if (!baby) return null
   const N = baby.name, now = st.now, shop = shopGroup(st.gate, N, now)
   const wk = (Date.now() - new Date(baby.due || baby.born).getTime()) / (7 * 864e5), b = band(wk)
+  // The end of the day's naps, as the parent set it or bedtime less the shortest wake window.
+  const napsEnd = baby.napsEnd ?? baby.bed - b.min
+  const moveEnd = (d: number) => st.setBaby({ napsEnd: clamp(napsEnd + d, baby.bed - 300, baby.bed - 30) })
 
   const sendLink = async () => {
     setBusy(true)
@@ -85,6 +88,8 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
         <Stepper label="Usual wake-up" value={timeParts(baby.wake)} onLess={() => st.setBaby({ wake: clamp(baby.wake - 15, 300, 600) })} onMore={() => st.setBaby({ wake: clamp(baby.wake + 15, 300, 600) })} />
         <Stepper label="Bedtime" value={timeParts(baby.bed)} onLess={() => st.setBaby({ bed: clamp(baby.bed - 15, 1050, 1380) })} onMore={() => st.setBaby({ bed: clamp(baby.bed + 15, 1050, 1380) })} />
         <Stepper label="Day sleep to aim for" value={lenParts(baby.target)} onLess={() => st.setBaby({ target: clamp(baby.target - 15, 30, 420) })} onMore={() => st.setBaby({ target: clamp(baby.target + 15, 30, 420) })} />
+        <Stepper label="No naps after" value={timeParts(napsEnd)} onLess={() => moveEnd(-15)} onMore={() => moveEnd(15)} />
+        <Note>Baby Nap Track gives you an optional time to wake {N} from a nap still going at {fmt(new Date(now).setHours(0, 0, 0, 0) + napsEnd * MIN)}. Some parents wake then to leave enough of a gap before bedtime.</Note>
         <Note>Baby Nap Track plans the naps between wake-up and bedtime and keeps count of the day sleep. Most babies at {ageText(baby, now)} sleep about {hours(targetFor(wk) * MIN)} in the day.</Note>
       </Group>
 
@@ -178,7 +183,7 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
       <Group title="How the times are worked out">
         <Note>At {ageText(baby, now)} most babies are ready for a nap after {span(b.min, b.max)} awake, and the time gets longer as the day goes on. Baby Nap Track starts with those times. Then it checks how long {N} was awake before each nap that went well this week and moves the times to fit. After a short nap, the next one comes sooner.</Note>
         <Note>Once 3 days are logged, the times come mostly from {N}'s own sleep.</Note>
-        <Note>After {fmt(new Date(now).setHours(0, 0, 0, 0) + (baby.bed - b.min - 20) * MIN)}, Baby Nap Track suggests an earlier bedtime instead of another nap.</Note>
+        <Note>After {fmt(new Date(now).setHours(0, 0, 0, 0) + (napsEnd - 20) * MIN)}, Baby Nap Track suggests an earlier bedtime instead of another nap.</Note>
         {/* Apple's guideline 1.4.1 asks an app about health to send people to a doctor as well.
             iPhone only for now, so the Android screens stay as they are. */}
         {IPHONE ? <Note>If you're ever worried about {N}'s sleep, have a chat with your GP or public health nurse.</Note> : null}

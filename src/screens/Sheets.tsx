@@ -200,7 +200,7 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
             <Note>Baby Nap Track sends a count each day you open the app, and when you do things like finish setup or share a log. {N}'s name, birthday and sleep times are never in the counts.</Note>
           </>
         ) : null}
-        <Link label="Privacy" onPress={() => Linking.openURL('https://tracy.spremtlabs.com/baby-nap-track/privacy/')} />
+        <Link label="Privacy" onPress={() => Linking.openURL('https://babynaptrack.com/privacy/')} />
         <Link label="Delete everything" onPress={onDelete} />
       </Group>
     </Sheet>
@@ -466,7 +466,7 @@ export function JoinSheet ({ open, initial, onClose, onJoined }: { open: boolean
     <Sheet open={open} onClose={onClose}>
       <T w="bold" size={22} style={{ marginBottom: 10 }}>Join a shared log</T>
       <T size={16} style={{ lineHeight: 23, marginBottom: 14 }}>Paste the link someone sent you.{hasLog ? ` The log on this phone is replaced by theirs.` : ''}</T>
-      <TextInput testID="join-link" value={text} onChangeText={setText} placeholder="https://tracy.spremtlabs.com/baby-nap-track/join/…" placeholderTextColor={t.muted} autoCapitalize="none" autoCorrect={false}
+      <TextInput testID="join-link" value={text} onChangeText={setText} placeholder="https://babynaptrack.com/join/…" placeholderTextColor={t.muted} autoCapitalize="none" autoCorrect={false}
         style={{ fontFamily: 'Figtree_400Regular', fontSize: 15, color: t.ink, backgroundColor: t.soft, borderRadius: 12, padding: 14 }} />
       {err ? <T size={15} color={t.honeyText} style={{ marginTop: 10 }}>{err}</T> : null}
       <Button label={busy ? 'Joining…' : 'Join'} disabled={!text.trim() || busy} onPress={join} style={{ marginTop: 18 }} />

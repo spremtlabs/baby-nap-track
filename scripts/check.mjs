@@ -939,7 +939,7 @@ if (PUPPETEER && !fails.length) {
       await expect(b, "Let's get your first nap time.")
       await tap(b, 'Someone sent you a link? Join their log')
       await b.waitForSelector('[data-testid=join-link]', { timeout: 5000 })
-      await b.type('[data-testid=join-link]', `https://tracy.spremtlabs.com/baby-nap-track/join/#${key}`)
+      await b.type('[data-testid=join-link]', `https://babynaptrack.com/join/#${key}`)
       await tap(b, 'Join')
       // Phone A paid, so phone B, whose own free week ended, gets the nap times from the log.
       await expect(b, 'Nap window in 35 min')

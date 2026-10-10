@@ -67,4 +67,4 @@ Parenting
 
 ## Contact
 
-hello@spremtlabs.com, https://tracy.spremtlabs.com/baby-nap-track/privacy/
+hello@spremtlabs.com, https://babynaptrack.com/privacy/

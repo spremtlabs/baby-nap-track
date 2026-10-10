@@ -2,7 +2,7 @@
 
 What goes into App Store Connect for Baby Nap Track on an iPhone, and the steps to the first release. The
 description is the Full description in `store/listing.md`, word for word, so the two stores say the
-same thing. The price comes from https://tracy.spremtlabs.com/baby-nap-track/llms.txt and from nowhere else.
+same thing. The price comes from https://babynaptrack.com/llms.txt and from nowhere else.
 Apple's rules behind each answer were read on developer.apple.com on 7 October 2026.
 
 ## Name
@@ -54,8 +54,8 @@ its name, screenshots and description talk to parents.
 
 ## Links
 
-- Support: https://tracy.spremtlabs.com/baby-nap-track/
-- Privacy: https://tracy.spremtlabs.com/baby-nap-track/privacy/
+- Support: https://babynaptrack.com/
+- Privacy: https://babynaptrack.com/privacy/
 
 ## Screenshots
 

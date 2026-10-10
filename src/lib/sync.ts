@@ -6,7 +6,7 @@ import type { Baby, Sleep } from './engine.ts'
 const URL = 'https://eynuujdjarqnwkjofrpw.supabase.co/rest/v1/rpc/'
 const KEY = 'sb_publishable_u1X1QV-qny9l9YvnVvGvog_xQ8dw1Tm'
 
-export const JOIN_PAGE = 'https://tracy.spremtlabs.com/baby-nap-track/join/'
+export const JOIN_PAGE = 'https://babynaptrack.com/join/'
 
 type Wire = { id: string; s: number; e: number | null; kind: 'nap' | 'night'; up: boolean; deleted: boolean; updated_at: number }
 

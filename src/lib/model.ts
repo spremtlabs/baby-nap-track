@@ -32,8 +32,8 @@ export type Hero = {
   // While a nap runs late in the day: the time to wake the baby, so the naps end when the parent
   // set them to. `now` once that time has come.
   wake: { at: number; now: boolean; left: string } | null
-  // After a short nap: the two ways to make it up, the one the parent picked last time first, and
-  // earlier bedtime first while the chair method runs.
+  // After a short nap with one nap left in the day: the two ways to make it up, the one the parent
+  // picked last time first, and earlier bedtime first while the chair method runs.
   ways: Ways | null
 }
 export type Ways = { say: string; day: number; by: number; opts: { id: Route; title: string; line: string; on: boolean }[] }
@@ -200,12 +200,15 @@ export function todayRows (E: Engine, g: Gate = NONE): { heading: string; rows: 
     } else rows.push({ at: out.leave, mark: 'out', title: 'Out', sub: range(out.leave, out.home, ' to '), right: '' })
   }
   const sorted = () => rows.sort((a, b) => a.at - b.at)
+  // A tap of the timer to add a nap, waiting for its times. A tap opens it.
+  const tapRow = (x: Sleep): Row => ({ at: x.s, mark: 'edge', title: 'Nap, set the times', right: fmt(x.s), edit: x.id })
   if (ph === 'night' || ph === 'waking') {
     // The day stays on the list after bedtime, so a nap can still be seen and fixed.
     const segs = E.nightSegs(), nd = E.nightDay()
     if (nd.up) rows.push({ at: nd.t0, mark: 'edge', title: 'Up for the day', right: fmt(nd.t0), edit: isMark(nd.up) ? undefined : nd.up.id })
     for (const x of nd.naps) rows.push({ at: x.s, mark: 'done', title: 'Nap', sub: range(x.s, x.e!, ' to '), right: dur(x.e! - x.s), edit: x.id })
     for (const gp of E.gapsIn(nd.t0, nd.ns, nd.naps)) rows.push(gapRow(gp))
+    for (const x of E.taps()) rows.push(tapRow(x))
     outRows(nd.t0)
     rows.push({ at: segs[0].s, mark: 'edge', title: 'Down for the night', right: fmt(segs[0].s), edit: segs[0].id })
     segs.forEach((x, j) => {
@@ -227,6 +230,7 @@ export function todayRows (E: Engine, g: Gate = NONE): { heading: string; rows: 
       ? { at: x.s, mark: 'done', title: 'Napping', sub: `since ${fmt(x.s)}`, right: dur(now - x.s), edit: x.id }
       : { at: x.s, mark: 'done', title: 'Nap', sub: range(x.s, x.e, ' to '), right: dur(x.e - x.s), edit: x.id })
   }
+  for (const x of E.taps()) rows.push(tapRow(x))
   const wa = lock ? null : E.wakeAt()
   if (wa != null) rows.push({ at: Math.max(wa, now), mark: 'next', title: 'Optional wake', sub: 'Some parents wake now to leave a gap before bedtime', right: now >= wa ? 'now' : fmt(wa) })
   for (const gp of E.gapsIn(ds.t, null, naps.filter((x) => x.e != null))) rows.push(gapRow(gp))

@@ -6,12 +6,17 @@ import { CIAN, OISIN, at, sleep, week } from '../test/sample.ts'
 
 export const STORE_KEY = 'snug.state.v1'
 
-export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'young'): { state: string; now: number } {
+export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'short-last' | 'young'): { state: string; now: number } {
   // A baby of ten weeks, for the chair method in Settings before six months, from 1.0.18.
   if (scenario === 'young') {
     return { state: JSON.stringify({ baby: CIAN, sleeps: week(), alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 11, 35) }
   }
-  // A morning nap of 27 minutes, at 9:40am: the two ways to make it up, from 1.0.17.
+  // A second nap of 30 minutes with one nap left, at 1pm: the two ways to make it up, from 1.0.22.
+  if (scenario === 'short-last') {
+    const sleeps = [...week(), sleep(at(0, 12, 15), at(0, 12, 45), 'nap')]
+    return { state: JSON.stringify({ baby: OISIN, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 13, 0) }
+  }
+  // A morning nap of 27 minutes, at 9:40am. From 1.0.22 the next nap comes sooner and nothing is asked.
   if (scenario === 'short-nap') {
     const sleeps = [...week().slice(0, -1), sleep(at(0, 8, 58), at(0, 9, 25), 'nap')]
     return { state: JSON.stringify({ baby: OISIN, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 9, 40) }

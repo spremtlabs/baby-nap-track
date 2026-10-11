@@ -111,8 +111,9 @@ export const napHours = (baby: Baby, t: number) => t >= atMins(t, baby.wake + 60
 
 // The log as the app reads it, oldest first. A night with a nap straight after it ended the night,
 // so its last waking is up for the day even when nobody tapped it, and that day keeps its naps.
+// A tap of the timer to add a nap is left out until its times are set.
 export function readLog (baby: Baby, log: Sleep[]): Sleep[] {
-  const v = log.filter((x) => !x.deleted).map((x) => asLogged(baby, x)).sort((a, b) => a.s - b.s)
+  const v = log.filter((x) => !x.deleted).map((x) => asLogged(baby, x)).filter((x) => !isTap(x)).sort((a, b) => a.s - b.s)
   return v.map((x, i) => (x.kind === 'night' && !x.up && x.e != null && v[i + 1]?.kind === 'nap' ? { ...x, up: true } : x))
 }
 
@@ -148,6 +149,9 @@ export const pickStart = (x: Sleep, now: number, h: number, m: number): Sleep =>
 // goes on the last time the clock showed it, and the start moves back with it. Any other wake-up
 // goes on the first time the clock shows it after the start.
 const TAP = 5 * MIN
+// A nap under five minutes is that tap, from 11 October 2026. It waits in Today's list for its
+// times, and the nap times, the day's sleep and the two ways leave it out until then.
+export const isTap = (x: Sleep) => x.kind === 'nap' && x.e != null && x.e - x.s < TAP
 export const pickEnd = (x: Sleep, now: number, h: number, m: number): Sleep => {
   const e = afterAt(x.s, h, m), len = x.e != null ? x.e - x.s : -1
   if (e <= now + MIN || len < 0 || len >= TAP) return { ...x, e }
@@ -175,6 +179,7 @@ export type Engine = ReturnType<typeof engine>
 
 export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null = null) {
   const sleeps = readLog(baby, log)
+  const taps = log.filter((x) => !x.deleted).map((x) => asLogged(baby, x)).filter((x) => isTap(x) && x.s >= now - DAY).sort((a, b) => a.s - b.s)
   const ageAt = (t: number) => ageWeeks(baby, t)
 
   const cur = () => { const l = sleeps[sleeps.length - 1]; return l && l.e == null ? l : null }
@@ -302,10 +307,12 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     return alt ? out : (planMemo = out)
   }
 
-  /* After a short nap there are two ways to make it up, and the parent picks: the next nap sooner
-     with the naps after it as usual, or the next nap at its usual time and bedtime earlier by the
-     sleep the short nap lost, a quarter of an hour to an hour. Null when the last nap ran 40
-     minutes or more, when no nap is left, or when both ways give the same times. */
+  /* After a short nap with one nap left in the day there are two ways to make it up, and the
+     parent picks: the last nap sooner, or at its usual time with bedtime earlier by the sleep the
+     short nap lost, a quarter of an hour to an hour. From 11 October 2026 the choice belongs at the
+     last nap, where waking the baby is the other option. After a short nap earlier in the day the
+     next nap comes sooner on its own. Null when the last nap ran 40 minutes or more, when more than
+     one nap is left or none is, or when both ways give the same times. */
   type Way = { c: number | null; more: number; bed: number }
   function shortNap (): { by: number; day: number; pick: Route | null; sooner: Way; bed: Way } | null {
     if (phase() !== 'day' || dayStart().unknown || activeOut() || ageAt(now) < 12) return null
@@ -319,7 +326,7 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
       return { c: n[0]?.c ?? null, more: Math.max(0, n.length - 1), bed: b ? b.c : bedOf(ds.t) }
     }
     const sooner = way(planNormal({ bed: false, by: 0 })), bed = way(planNormal({ bed: true, by }))
-    if (sooner.c == null || (sooner.c === bed.c && sooner.bed === bed.bed)) return null
+    if (sooner.c == null || sooner.more > 0 || (sooner.c === bed.c && sooner.bed === bed.bed)) return null
     if (now > Math.max(sooner.c, bed.c ?? 0) + 20 * MIN) return null
     return { by, day: dayFloor(baby, now), pick: route()?.pick ?? null, sooner, bed }
   }
@@ -425,8 +432,10 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
 
   // The make-up nap: when the windows ahead cannot reach the day's aim, how much sleep is still
   // needed and when the baby has to be down to finish by the end of the naps.
+  // With earlier bedtime picked after a short nap, the day follows that plan and asks for no more
+  // nap than it holds.
   function makeUp (): MakeUp | null {
-    if (phase() !== 'day' || dayStart().unknown || activeOut()) return null
+    if (phase() !== 'day' || dayStart().unknown || activeOut() || picked().bed) return null
     const B = budget()
     if (B.rem < 15 * MIN) return null
     const naps = plan().filter((w) => !w.bed)
@@ -513,6 +522,7 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
 
   return {
     baby, sleeps, now, out,
+    taps: () => taps,
     cur, phase, dayStart, unknownMorning, napsSince, nightSegs, bedOf, pastDays, napLen, plan, planNormal, shortNap, lastWake, budget, makeUp, wakeAt, planNaps, theme, morning,
     activeOut, outPlan, nightDay, gapsIn, lastNight,
     band: () => band(ageAt(now)),

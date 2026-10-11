@@ -599,20 +599,29 @@ test('a wake-up typed in during the night does not make a second day on the week
   assert.equal(w.rows.length, 7)
 })
 
-// After a short nap the parent picks how to make it up, from 1.0.17.
-test('a 27 minute nap gives two ways to make it up, and the day follows the one picked', () => {
-  const log = [...week().slice(0, -1), sleep(at(0, 8, 58), at(0, 9, 25), 'nap')], now = at(0, 9, 40)
-  const h = hero(engine(OISIN, log, now))
+// After a short nap the parent picks how to make it up, from 1.0.17. From 11 October 2026 the
+// choice comes only with one nap left in the day, where waking the baby is the other option.
+test('a short morning nap brings the next nap sooner and asks nothing', () => {
+  const log = [...week().slice(0, -1), sleep(at(0, 8, 58), at(0, 9, 25), 'nap')], h = hero(engine(OISIN, log, at(0, 9, 40)))
   assert.equal(plain(h.big), '11:25 am')
+  assert.equal(h.ways, null)
+})
+
+test('a short nap with one nap left gives two ways to make it up, and the day follows the one picked', () => {
+  const log = [...week(), sleep(at(0, 12, 15), at(0, 12, 45), 'nap')], now = at(0, 13, 0)
+  const h = hero(engine(OISIN, log, now))
+  assert.equal(plain(h.big), '2:55 pm')
   assert.equal(h.ways?.say, 'That nap was short. Here are two ways to make it up.')
   assert.deepEqual(h.ways?.opts, [
-    { id: 'sooner', title: 'Nap sooner', line: 'Nap at 11:25am, then one more. Bedtime 7pm.', on: true },
-    { id: 'bed', title: 'Earlier bedtime', line: 'Nap at 11:45am, then one more. Bedtime 6:20pm.', on: false },
+    { id: 'sooner', title: 'Nap sooner', line: 'Nap at 2:55pm. Bedtime 7pm.', on: true },
+    { id: 'bed', title: 'Earlier bedtime', line: 'Nap at 3:15pm. Bedtime 6pm.', on: false },
   ])
   const picked = { ...OISIN, route: { day: dayFloor(OISIN, now), pick: 'bed' as const, by: h.ways!.by }, routeLikes: 'bed' as const }
   const E = engine(picked, log, now), b = hero(E)
-  assert.equal(plain(b.big), '11:45 am')
-  assert.equal(fmt(E.budget().bedT), '6:20pm')
+  // Earlier bedtime keeps the last nap at its time, and the day's sleep sum asks for no more.
+  assert.equal(plain(b.big), '3:15 pm')
+  assert.equal(b.sub, 'Put Oisín down between 3:05 and 3:25pm.')
+  assert.equal(fmt(E.budget().bedT), '6pm')
   assert.deepEqual(b.ways?.opts.map((o) => [o.id, o.on]), [['bed', true], ['sooner', false]])
   // The two stay where they were at the tap for the rest of the day.
   assert.deepEqual(hero(engine({ ...picked, route: { ...picked.route, first: 'sooner' } }, log, now)).ways?.opts.map((o) => [o.id, o.on]), [['sooner', false], ['bed', true]])
@@ -622,7 +631,18 @@ test('a 27 minute nap gives two ways to make it up, and the day follows the one 
 
 test('a nap of 40 minutes or more gives no choice, and the chair method puts earlier bedtime first', () => {
   assert.equal(hero(engine(OISIN, week(), at(0, 11, 35))).ways, null)
-  const log = [...week().slice(0, -1), sleep(at(0, 8, 58), at(0, 9, 25), 'nap')]
+  const log = [...week(), sleep(at(0, 12, 15), at(0, 12, 45), 'nap')]
   const chair = { from: '2020-01-01', held: [], settles: [], inCot: null }
-  assert.deepEqual(hero(engine({ ...OISIN, chair }, log, at(0, 9, 40))).ways?.opts.map((o) => o.id), ['bed', 'sooner'])
+  assert.deepEqual(hero(engine({ ...OISIN, chair }, log, at(0, 13, 0))).ways?.opts.map((o) => o.id), ['bed', 'sooner'])
+})
+
+// 11 October 2026: a tap of the timer to add a nap was read as a nap of no minutes. It brought up
+// the two ways and set the next nap from the time of the tap.
+test('a tap of the timer waits in the list for its times, and the plan and the two ways leave it out', () => {
+  const t = [...week(), sleep(at(0, 11, 30), at(0, 11, 30) + 40e3, 'nap')], n = at(0, 11, 35), E = engine(OISIN, t, n), W = engine(OISIN, week(), n)
+  assert.equal(plain(hero(E).big), plain(hero(W).big))
+  assert.equal(hero(E).ways, null)
+  assert.equal(daySleep(E).say, daySleep(W).say)
+  const row = todayRows(E).rows.find((r) => r.title === 'Nap, set the times')
+  assert.deepEqual([row?.right, row?.edit], ['11:30am', t[t.length - 1].id])
 })

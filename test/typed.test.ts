@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { engine, type Sleep } from '../src/lib/engine.ts'
-import { savedLine, todayRows } from '../src/lib/model.ts'
+import { daySleep, savedLine, todayRows } from '../src/lib/model.ts'
 import { applyTyped, readTyped, typed, type TypedEnd, type TypedRow } from '../src/lib/typed.ts'
 import { OISIN, at, sleep, week } from './sample.ts'
 
@@ -122,4 +122,79 @@ test('awake from one time to the next, then a sleep until a time, is a wake-up a
   assert.deepEqual(said('down at 6, slept till half 7', t), [[at(1, 6, 0), at(1, 7, 30)]])
   assert.deepEqual(said('awake 5 to 6, nap 6:10 to 7:28', t), [['woke', at(1, 5, 0)], [at(1, 6, 10), at(1, 7, 28)]])
   assert.deepEqual(said('up at 5 until 6', at(1, 6, 30)), [['woke', at(1, 5, 0)], [at(1, 6, 0), null]])
+})
+
+// 11 October 2026, typed at 6:06pm: the night went to 6am, the sleep from 6 to 7:30 and the nap at
+// 2:50 were lost, and Today said 2 h 33 min to go before bed at 7pm. 1.0.24 threw the night out for
+// its word night, read `awake until 6` as a wake-up at 6, and read only the first two of the four
+// times in `10:35 to 11:11am (36 min) and 2:50 to 3:15pm (25 min)`.
+const EVENING = 'Oisín slept from 7:53pm last night until 5:00am, then was awake until 6:00am and slept again until 7:30am. He napped from 7:45 to 8:30am (45 min), 10:35 to 11:11am (36 min) and 2:50 to 3:15pm (25 min). He just fell asleep at 6pm'
+const evening = () => [...log(), sleep(at(0, 19, 53), at(1, 5, 38), 'night', true), sleep(at(1, 7, 45), at(1, 8, 30), 'nap'), sleep(at(1, 10, 35), at(1, 11, 11), 'nap'), sleep(at(1, 18, 0), null, 'nap')]
+
+test('a whole day typed in the evening, the night first, goes in as typed', () => {
+  const l = evening(), t = at(1, 18, 6), r = typed(EVENING, OISIN, l, t)
+  assert.deepEqual(plain(r.rows), [['woke', at(1, 5, 0)], [at(1, 6, 0), at(1, 7, 30)], [at(1, 7, 45), at(1, 8, 30)], [at(1, 10, 35), at(1, 11, 11)], [at(1, 14, 50), at(1, 15, 15)], [at(1, 18, 0), null]])
+  assert.equal((r.rows[0] as TypedRow & { k: 'wake' }).from, at(0, 19, 53))
+  assert.deepEqual([r.left, r.drop.length], [[], 3])
+  const E = engine(OISIN, applyTyped(OISIN, l, t, r, id, false).sleeps, t)
+  assert.equal(E.dayStart().t, at(1, 5, 0))
+  assert.deepEqual(E.napsSince(E.dayStart().t).map((x) => [x.s, x.e]), [[at(1, 6, 0), at(1, 7, 30)], [at(1, 7, 45), at(1, 8, 30)], [at(1, 10, 35), at(1, 11, 11)], [at(1, 14, 50), at(1, 15, 15)], [at(1, 18, 0), null]])
+  assert.deepEqual(todayRows(E).rows.slice(0, 2).map((x) => [x.title, x.sub ?? '', x.right]), [['Last night', '7:53pm to 5am', '9 h 7 min'], ['Up for the day', '', '5am']])
+})
+
+test('a nap running with less time before bed than the day sleep still to go says how short the day is', () => {
+  const t = at(1, 18, 6), E = engine(OISIN, evening(), t)
+  assert.equal(daySleep(E).say, 'Oisín is 1 h 33 min short of 3 hours today.')
+  // With a nap from 2 to 2:50 logged, the 43 minutes left fit before bed.
+  assert.equal(daySleep(engine(OISIN, [...evening(), sleep(at(1, 14, 0), at(1, 14, 50), 'nap')], t)).say, '43 min to go before bed at 7pm.')
+})
+
+test('times with no am or pm follow the one before, a length is no time, and four times are two naps', () => {
+  const t = at(1, 18, 6)
+  assert.deepEqual(said('Up at 5am until 6 then sleep until 7.30 then sleep from 7.45 to 8.30', t), [['woke', at(1, 5, 0)], [at(1, 6, 0), at(1, 7, 30)], [at(1, 7, 45), at(1, 8, 30)]])
+  assert.deepEqual(said('napped at 2 (20 min)', t), [[at(1, 14, 0), at(1, 14, 20)]])
+  assert.deepEqual(said('naps 10:35 to 11:11 & 2:50 to 3:15', t), [[at(1, 10, 35), at(1, 11, 11)], [at(1, 14, 50), at(1, 15, 15)]])
+  assert.deepEqual(readTyped('naps 10:35 to 11:11 & 2:50', OISIN, t).left, ['naps 10:35 to 11:11 & 2:50'])
+  // A single update still goes on the latest time it could be.
+  assert.deepEqual(said('just went down at 6', t), [[at(1, 18, 0), null]])
+})
+
+test('the night typed with its start fills a night not logged, and moves the first stretch of one logged', () => {
+  const r = typed('slept 7:10pm to 6:40 last night', OISIN, log(), now)
+  assert.deepEqual([plain(r.rows), r.left], [[['woke', at(1, 6, 40)]], []])
+  const E = engine(OISIN, applyTyped(OISIN, log(), now, r, id, false).sleeps, now)
+  assert.deepEqual(todayRows(E).rows[0].sub, '7:10pm to 6:40am')
+  const woken = [...log(), sleep(at(0, 20, 0), at(1, 1, 0), 'night'), sleep(at(1, 1, 20), at(1, 6, 50), 'night', true)]
+  const x = applyTyped(OISIN, woken, now, typed('slept from 7:40pm last night till 6:30', OISIN, woken, now), id, false)
+  const night = x.sleeps.filter((y) => y.kind === 'night' && y.s >= at(0, 19, 0))
+  assert.deepEqual(night.map((y) => [y.s, y.e]), [[at(0, 19, 40), at(1, 1, 0)], [at(1, 1, 20), at(1, 6, 30)]])
+  assert.equal(x.ids.length, 2)
+  // Bedtime and a waking in the night are not added.
+  assert.deepEqual(readTyped('woke in the night at 2, down for the night at 7', OISIN, now).left, ['woke in the night at 2', 'down for the night at 7'])
+})
+
+// 11 October 2026, read off the parser after the evening above: the other ways a day gets typed.
+test('the night typed without the word night, bedtime typed in the evening, and a waking in the night', () => {
+  const night = (text: string, t: number) => readTyped(text, OISIN, t).rows.map((x) => (x.k === 'wake' ? ['woke', x.t, x.from] : x.k === 'sleep' ? [x.s, x.e] : []))
+  for (const t of [now, at(1, 18, 6)]) {
+    assert.deepEqual(night('Down 7.10, up 6.40', t), [['woke', at(1, 6, 40), at(0, 19, 10)]])
+    assert.deepEqual(night('slept 7pm-6:30am', t), [['woke', at(1, 6, 30), at(0, 19, 0)]])
+    assert.deepEqual(night('went to bed at 7:10 and woke at 6:40', t), [['woke', at(1, 6, 40), at(0, 19, 10)]])
+  }
+  assert.deepEqual(said('bed at 7:05pm', at(1, 19, 40)), [[at(1, 19, 5), null]])
+  assert.deepEqual(said('nap 4:30 to 5, down for the night at 7:05', at(1, 19, 40)), [[at(1, 16, 30), at(1, 17, 0)], [at(1, 19, 5), null]])
+  const r = readTyped('woke at 2am for a feed, back down at 2:30, up for the day at 6:45', OISIN, at(1, 18, 6))
+  assert.deepEqual([plain(r.rows), r.left], [[['woke', at(1, 6, 45)]], ['woke at 2am for a feed', 'back down at 2:30']])
+  // A nap that has not ended yet is not the night.
+  assert.deepEqual(readTyped('nap 4:30 to 5', OISIN, at(1, 16, 45)).rows, [])
+})
+
+test('a day typed in the evening with no am or pm, numbered naps, 6ish and an hour and ten', () => {
+  const t = at(1, 18, 6)
+  assert.deepEqual(said('Woke 5:30, fed, nap 9 to 10', t), [['woke', at(1, 5, 30)], [at(1, 9, 0), at(1, 10, 0)]])
+  assert.deepEqual(said('woke at 5:30', t), [['woke', at(1, 17, 30)]])
+  assert.deepEqual(said('nap 5 to 5:40, down at 6', t), [[at(1, 17, 0), at(1, 17, 40)], [at(1, 18, 0), null]])
+  assert.deepEqual(said('Nap 1 9:10-10:20, nap 2: 1:15-2:40', t), [[at(1, 9, 10), at(1, 10, 20)], [at(1, 13, 15), at(1, 14, 40)]])
+  assert.deepEqual(said('woke at 6ish, nap 9:30ish to 10:15', t), [['woke', at(1, 6, 0)], [at(1, 9, 30), at(1, 10, 15)]])
+  assert.deepEqual(said('nap 9:30 for 1hr 10', t), [[at(1, 9, 30), at(1, 10, 40)]])
 })

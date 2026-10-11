@@ -117,8 +117,9 @@ export function Toggle ({ value, onChange, label }: { value: boolean; onChange: 
 
 // A panel that rises from the bottom over a dimmed screen. Tapping the dim closes it. It rises
 // with the keyboard, so a box being typed in stays in sight. `end` keeps the last line in view,
-// for the chat.
-export function Sheet ({ open, onClose, children, tall, end }: { open: boolean; onClose: () => void; children: ReactNode; tall?: boolean; end?: boolean }) {
+// for the chat. `foot` stays at the bottom of the panel while the rest scrolls above it.
+// 11 October 2026: a long morning typed in pushed Save below the bottom of the phone.
+export function Sheet ({ open, onClose, children, tall, end, foot }: { open: boolean; onClose: () => void; children: ReactNode; tall?: boolean; end?: boolean; foot?: ReactNode }) {
   const t = useTheme(), insets = useSafeAreaInsets()
   const rise = useRef(new Animated.Value(0)).current
   const scroll = useRef<ScrollView>(null)
@@ -130,10 +131,11 @@ export function Sheet ({ open, onClose, children, tall, end }: { open: boolean; 
         <KeyboardAvoidingView behavior="padding" style={[StyleSheet.absoluteFill, { justifyContent: 'flex-end' }]} pointerEvents="box-none">
           <Animated.View style={{ maxHeight: tall ? '92%' : '88%', backgroundColor: t.sheet, borderTopLeftRadius: 28, borderTopRightRadius: 28, transform: [{ translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [60, 0] }) }], opacity: rise }}>
             <ScrollView ref={scroll} onContentSizeChange={() => { if (end) scroll.current?.scrollToEnd({ animated: true }) }}
-              contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24 + insets.bottom }} keyboardShouldPersistTaps="handled">
+              style={{ flexShrink: 1 }} contentContainerStyle={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: foot ? 16 : 24 + insets.bottom }} keyboardShouldPersistTaps="handled">
               <View style={{ width: 40, height: 5, borderRadius: 3, backgroundColor: t.line, alignSelf: 'center', marginBottom: 18 }} />
               {children}
             </ScrollView>
+            {foot ? <View style={{ paddingHorizontal: 24, paddingTop: 12, paddingBottom: 16 + insets.bottom, borderTopWidth: 1, borderTopColor: t.line }}>{foot}</View> : null}
           </Animated.View>
         </KeyboardAvoidingView>
       </ThemeCtx.Provider>

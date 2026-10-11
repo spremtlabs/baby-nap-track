@@ -176,6 +176,8 @@ export function daySleep (E: Engine, g: Gate = NONE): DaySleep {
     else if (mk && mk.kind === 'late') say = `${N} is ${dur(B.rem)} short of ${hours(B.target)} today.`
     else if (mk) say = `${N} needs ${dur(B.rem)} more to make ${hours(B.target)}.`
     else if (E.wakeAt() != null && E.wakeAt()! > now) say = `${N}'s day sleep comes to ${dur(so + E.wakeAt()! - now)} with a wake-up at ${fmt(E.wakeAt()!)}.`
+    // 11 October 2026: a nap at 6pm read `2 h 33 min to go before bed at 7pm`, more than the hour left.
+    else if (E.cur() && B.rem > B.bedT - now) say = `${N} is ${dur(B.rem)} short of ${hours(B.target)} today.`
     else if (E.cur()) say = `${dur(B.rem)} to go before bed at ${fmt(B.bedT)}.`
     else if (pl.length > 1) say = `${dur(B.rem)} to go, across ${pl.length} more naps.`
     else if (pl.length === 1) say = `${dur(B.rem)} to go. Aim for that in the next nap.`

@@ -606,10 +606,23 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
 }
 
 // This morning's wake-up put in the log. The last stretch of the night ends then, or a mark goes in
-// when the night was not logged.
-export function withMorning (baby: Baby, log: Sleep[], at: number, t: number, id: string): { sleeps: Sleep[]; id: string } {
-  const ds = engine(baby, log, at).dayStart()
+// when the night was not logged. With `from`, the night's start typed with it, the first stretch
+// starts then, and a night not logged goes in whole unless it would sit over a sleep in the log.
+// `ids` lists every row that changed, for a shared log.
+export function withMorning (baby: Baby, log: Sleep[], at: number, t: number, id: string, from?: number): { sleeps: Sleep[]; id: string; ids: string[] } {
+  const E = engine(baby, log, at), ds = E.dayStart()
   const up = ds.up && !ds.unknown ? ds.up : null
-  const row: Sleep = up ? { ...up, s: isMark(up) ? t : up.s, e: t, updatedAt: at } : { id, s: t, e: t, kind: 'night', up: true, updatedAt: at }
-  return { sleeps: (up ? log.map((x) => (x.id === up.id ? row : x)) : [...log, row]).sort((a, b) => a.s - b.s), id: row.id }
+  let s = up && !isMark(up) ? up.s : t, first: Sleep | null = null
+  if (from != null && from < t) {
+    if (up && !isMark(up)) {
+      let j = E.sleeps.findIndex((x) => x.id === up.id)
+      while (j > 0 && E.sleeps[j - 1].kind === 'night' && !E.sleeps[j - 1].up && E.sleeps[j - 1].e != null) j--
+      const f = log.find((x) => x.id === E.sleeps[j].id)
+      if (!f || f.id === up.id) s = from
+      else if (from < f.e!) first = { ...f, s: from, updatedAt: at }
+    } else if (!log.some((x) => !x.deleted && !isMark(x) && x.s < t && (x.e ?? at) > from)) s = from
+  }
+  const row: Sleep = up ? { ...up, s, e: t, updatedAt: at } : { id, s, e: t, kind: 'night', up: true, updatedAt: at }
+  const sleeps = (up ? log.map((x) => (x.id === up.id ? row : first && x.id === first.id ? first : x)) : [...log, row]).sort((a, b) => a.s - b.s)
+  return { sleeps, id: row.id, ids: first ? [row.id, first.id] : [row.id] }
 }

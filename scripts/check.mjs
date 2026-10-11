@@ -396,6 +396,38 @@ if (PUPPETEER && !fails.length) {
     await done(p)
   }
 
+  // 11 October 2026: a whole day typed at 6:06pm, the night first. 1.0.24 kept the night to 6am,
+  // lost the sleep from 6 to 7:30 and the nap at 2:50, and Save sat below the bottom of the phone.
+  {
+    const p = await open('typed-evening', seed('typed-evening'))
+    await tap(p, 'Type what happened')
+    await p.type('[data-testid=typed]', 'Oisín slept from 7:53pm last night until 5:00am, then was awake until 6:00am and slept again until 7:30am. He napped from 7:45 to 8:30am (45 min), 10:35 to 11:11am (36 min) and 2:50 to 3:15pm (25 min). He just fell asleep at 6pm')
+    await expect(p, '7:53pm to 5am')
+    await expect(p, '6 to 7:30am')
+    await expect(p, '2:50 to 3:15pm')
+    await absent(p, 'Not added')
+    // The phone's box grows with the words, so Save has to sit outside the part that scrolls.
+    const box = await p.evaluate(() => {
+      const b = [...document.querySelectorAll('[role=button]')].filter((e) => e.innerText.trim() === 'Save').pop()
+      if (!b) return null
+      let scrolls = false
+      for (let e = b.parentElement; e; e = e.parentElement) if (/auto|scroll/.test(getComputedStyle(e).overflowY)) scrolls = true
+      const r = b.getBoundingClientRect()
+      return { top: r.top, bottom: r.bottom, height: window.innerHeight, scrolls }
+    })
+    if (!box || box.top < 0 || box.bottom > box.height || box.scrolls) fail('typed-evening', `Save is not held on the screen: ${JSON.stringify(box)}`)
+    await look(p, 'typed-evening-sheet')
+    await p.evaluate(() => [...document.querySelectorAll('[role=button]')].filter((e) => e.innerText.trim() === 'Save').pop()?.click())
+    await new Promise((r) => setTimeout(r, 400))
+    await expect(p, '7:53pm to 5am')
+    await expect(p, '6 to 7:30am')
+    await expect(p, '2:50 to 3:15pm')
+    await expect(p, 'since 6pm')
+    await absent(p, 'to go before bed')
+    await look(p, 'typed-evening')
+    await done(p)
+  }
+
   // A phone set up on version 1.0.0 is asked about the morning when the update opens.
   {
     const p = await open('v1', seed('v1'))

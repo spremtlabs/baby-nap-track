@@ -468,14 +468,17 @@ export function TypedSheet ({ open, onClose, onToast }: { open: boolean; onClose
   const [text, setText] = useState('')
   const [fixes, setFixes] = useState<Record<number, TypedRow | null>>({})
   const [ed, setEd] = useState<{ i: number; p: string; x: Sleep } | null>(null)
-  const [woke, setWoke] = useState<{ i: number; p: string; t: number } | null>(null)
+  const [woke, setWoke] = useState<{ i: number; p: string; t: number; from?: number } | null>(null)
   useEffect(() => { if (open) { setText(''); setFixes({}); setEd(null); setWoke(null) } }, [open])
   if (!baby) return null
   const now = Date.now(), r = typed(text, baby, st.state.sleeps, now, fixes)
   const fix = (i: number, x: TypedRow | null) => setFixes({ ...fixes, [i]: x })
   const shown = r.rows.map((x) => {
     const e = x.k === 'end' ? x.t : x.k === 'sleep' ? x.e : null
-    const row: Row = x.k === 'wake' || (x.k === 'end' && x.night)
+    // The night typed with its start shows as Today's list will show it.
+    const row: Row = x.k === 'wake' && x.from != null
+      ? { at: x.from, mark: 'done', title: 'Last night', sub: range(x.from, x.t, ' to '), right: dur(x.t - x.from) }
+      : x.k === 'wake' || (x.k === 'end' && x.night)
       ? { at: x.t, mark: 'edge', title: 'Woke up', right: fmt(x.t) }
       : e == null
         ? { at: x.s, mark: 'done', title: kindFor(baby, x.s) === 'nap' ? 'Napping' : 'Asleep', sub: `since ${fmt(x.s)}`, right: dur(now - x.s) }
@@ -484,10 +487,12 @@ export function TypedSheet ({ open, onClose, onToast }: { open: boolean; onClose
   })
   // A wake-up opens the time; a sleep, the ended nap among them, opens the nap's two times.
   const change = (x: (typeof r.rows)[number]) => (x.k === 'wake' || (x.k === 'end' && x.night)
-    ? () => setWoke({ i: x.i, p: x.p, t: x.t })
+    ? () => setWoke({ i: x.i, p: x.p, t: x.t, from: x.k === 'wake' ? x.from : undefined })
     : () => { const e = x.k === 'end' ? x.t : x.e; setEd({ i: x.i, p: x.p, x: { id: 'typed', s: x.s, e, kind: kindFor(baby, x.s), updatedAt: now } }) })
+  // Save sits under the box at the bottom of the phone, however much was typed.
+  const save = <Button label="Save" disabled={!r.rows.length} onPress={() => { const next = st.saveTyped(r); onClose(); onToast(savedLine(next, st.gate)) }} />
   return (
-    <Sheet open={open} onClose={onClose}>
+    <Sheet open={open} onClose={onClose} foot={ed || woke ? undefined : save}>
       {ed ? (
         <NapForm ed={ed.x} isNew={false} onChange={(x) => setEd({ ...ed, x })}
           onSave={() => { fix(ed.i, { k: 'sleep', s: ed.x.s, e: ed.x.e, p: ed.p }); setEd(null) }} onDelete={() => { fix(ed.i, null); setEd(null) }} />
@@ -495,7 +500,7 @@ export function TypedSheet ({ open, onClose, onToast }: { open: boolean; onClose
         <>
           <T w="bold" size={22} style={{ marginBottom: 14 }}>Woke up</T>
           <TimeField value={woke.t} onPick={(h, m) => setWoke({ ...woke, t: morningAt(baby, now, h, m) })} label="Woke up" testID="typed-wake" />
-          <Button label="Save" disabled={woke.t > now} style={{ marginTop: 22 }} onPress={() => { fix(woke.i, { k: 'wake', t: woke.t, p: woke.p }); setWoke(null) }} />
+          <Button label="Save" disabled={woke.t > now} style={{ marginTop: 22 }} onPress={() => { fix(woke.i, { k: 'wake', t: woke.t, p: woke.p, from: woke.from }); setWoke(null) }} />
         </>
       ) : (
         <>
@@ -515,7 +520,6 @@ export function TypedSheet ({ open, onClose, onToast }: { open: boolean; onClose
               {r.left.map((p, i) => <T key={i} size={15} color={t.muted} style={{ lineHeight: 22 }}>{`\u201C${p}\u201D`}</T>)}
             </View>
           ) : null}
-          <Button label="Save" disabled={!r.rows.length} style={{ marginTop: 22 }} onPress={() => { const next = st.saveTyped(r); onClose(); onToast(savedLine(next, st.gate)) }} />
         </>
       )}
     </Sheet>

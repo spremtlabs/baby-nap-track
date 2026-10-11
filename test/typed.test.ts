@@ -105,3 +105,21 @@ test('a wake-up typed while the night is still running ends the night, up for th
   const E = engine(OISIN, applyTyped(OISIN, l, t, r, id, false).sleeps, t)
   assert.deepEqual([E.dayStart().t, E.phase()], [at(0, 6, 50), 'day'])
 })
+
+// 11 October 2026: `Up at 5am until 6 then sleep until 7.30 then sleep from 7.45 to 8.30` saved only
+// the 7:45 nap. The first piece was read as a sleep from 5 to 6, which sat over the night, and the
+// second as a nap starting at 7:30.
+test('awake from one time to the next, then a sleep until a time, is a wake-up and a sleep', () => {
+  const l = [...log(), sleep(at(0, 19, 53), at(1, 5, 38), 'night', true)], t = at(1, 9, 0)
+  const text = 'Up at 5am until 6 then sleep until 7.30 then sleep from 7.45 to 8.30'
+  const r = typed(text, OISIN, l, t)
+  assert.deepEqual(plain(r.rows), [['woke', at(1, 5, 0)], [at(1, 6, 0), at(1, 7, 30)], [at(1, 7, 45), at(1, 8, 30)]])
+  assert.deepEqual(r.left, [])
+  const E = engine(OISIN, applyTyped(OISIN, l, t, r, id, false).sleeps, t)
+  assert.equal(E.dayStart().t, at(1, 5, 0))
+  assert.deepEqual(E.napsSince(E.dayStart().t).map((x) => [x.s, x.e]), [[at(1, 6, 0), at(1, 7, 30)], [at(1, 7, 45), at(1, 8, 30)]])
+  assert.deepEqual(said('slept until 7:30', t), [['woke', at(1, 7, 30)]])
+  assert.deepEqual(said('down at 6, slept till half 7', t), [[at(1, 6, 0), at(1, 7, 30)]])
+  assert.deepEqual(said('awake 5 to 6, nap 6:10 to 7:28', t), [['woke', at(1, 5, 0)], [at(1, 6, 10), at(1, 7, 28)]])
+  assert.deepEqual(said('up at 5 until 6', at(1, 6, 30)), [['woke', at(1, 5, 0)], [at(1, 6, 0), null]])
+})

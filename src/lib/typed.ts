@@ -1,11 +1,13 @@
 /* What a parent types about the morning, read on the phone into the wake-up and the sleeps. From
    mock type-what-happened v1, 11 October 2026. The words are never sent anywhere.
 
-   Each piece between commas is one thing that happened. A piece with two times is a sleep. A sleep
-   word and one time start a sleep that the next wake-up ends, or that is still going. A wake-up
-   before anything else is the morning. A feed, the night, a piece with no time and a time still to
-   come are not added, and the sheet lists each one in the parent's own words. A time with no am or
-   pm goes on the latest time of day that has passed, in the order the pieces were typed. */
+   Each piece between commas is one thing that happened. A piece with two times is a sleep, unless a
+   wake word comes first: then the baby was up from the first time and went down at the second. A
+   sleep word and one time start a sleep that the next wake-up ends, or that is still going, and a
+   sleep word with until or till before its time is that wake-up. A wake-up before anything else is
+   the morning. A feed, the night, a piece with no time and a time still to come are not added, and
+   the sheet lists each one in the parent's own words. A time with no am or pm goes on the latest
+   time of day that has passed, in the order the pieces were typed. */
 import { DAY, HOUR, MIN, asLogged, dayAt, dayFloor, engine, isMark, kindFor, withMorning, type Baby, type Sleep } from './engine.ts'
 
 export type TypedRow = { k: 'wake'; t: number; p: string } | { k: 'sleep'; s: number; e: number | null; p: string }
@@ -23,18 +25,20 @@ const NIGHT = /\b(night|bed|bedtime|tonight)\b/i
 const WAKES = /\b(up|woke|wakes|awake|waking|wake)\b/i
 const SLEEPS = /\b(nap|naps|napped|napping|asleep|slept|sleep|down|dozed|dozing|snoozed|conked)\b/i
 const ENDS = /\b(woke|awake)\b/i
+const TILL = /\b(?:until|till|til|to)\s+$/i
 const SPLIT = /[,;\n]+|\.(?=\s|$)|\s+then\s+|\s+and\s+(?=(?:then\s+)?(?:up|woke|awake|nap|napped|down|asleep|slept|back|went|fed|feed|had)\b)/i
 
-type Clock = { h: number; m: number; ap: 'am' | 'pm' | null }
+type Clock = { h: number; m: number; ap: 'am' | 'pm' | null; at: number }
 const hourOf = (x: string) => WORD[x.toLowerCase()] ?? parseInt(x, 10)
 
 function clocks (text: string): Clock[] {
   const out: Clock[] = []
   for (const m of text.matchAll(TIME)) {
-    if (m[1]) { const n = PAST[m[1].toLowerCase()], h = hourOf(m[3]); out.push(m[2].toLowerCase() === 'past' ? { h, m: n, ap: null } : { h: h - 1, m: 60 - n, ap: null }) }
-    else if (m[4]) out.push({ h: hourOf(m[4]), m: 30, ap: null })
-    else if (m[8]) out.push({ h: 12, m: 0, ap: 'pm' })
-    else if (m[5]) out.push({ h: +m[5], m: m[6] ? +m[6] : 0, ap: m[7] ? (m[7][0].toLowerCase() === 'p' ? 'pm' : 'am') : null })
+    const at = m.index
+    if (m[1]) { const n = PAST[m[1].toLowerCase()], h = hourOf(m[3]); out.push(m[2].toLowerCase() === 'past' ? { h, m: n, ap: null, at } : { h: h - 1, m: 60 - n, ap: null, at }) }
+    else if (m[4]) out.push({ h: hourOf(m[4]), m: 30, ap: null, at })
+    else if (m[8]) out.push({ h: 12, m: 0, ap: 'pm', at })
+    else if (m[5]) out.push({ h: +m[5], m: m[6] ? +m[6] : 0, ap: m[7] ? (m[7][0].toLowerCase() === 'p' ? 'pm' : 'am') : null, at })
   }
   return out.filter((c) => c.h >= 0 && c.h <= 23 && c.m < 60)
 }
@@ -53,16 +57,38 @@ function minutes (long: RegExpMatchArray | null) {
   return (long[1] ? (/^(an?|one)$/i.test(long[1]) ? 60 : +long[1] * 60) : 0) + (long[2] ? +long[2] : 0)
 }
 
+// A wake word before any sleep word: `up at 5 until 6` is awake, `napped 6:10 woke 7:28` is asleep.
+const upFirst = (p: string) => WAKES.test(p) && (!SLEEPS.test(p) || p.search(WAKES) < p.search(SLEEPS))
+
 export function readTyped (text: string, baby: Baby, now: number): { rows: TypedRow[]; left: string[] } {
   const rows: TypedRow[] = [], left: string[] = []
-  let after = dayFloor(baby, now) - 90 * MIN, open: { s: number; p: string } | null = null
-  const shut = () => { if (open) left.push(open.p); open = null }
+  // A sleep that starts where a time awake ends is quiet: its words went into the wake-up, so a
+  // sleep typed after it in its place leaves nothing under Not added.
+  let after = dayFloor(baby, now) - 90 * MIN, open: { s: number; p: string; quiet?: boolean } | null = null
+  const shut = () => { if (open && !open.quiet) left.push(open.p); open = null }
+  // A wake-up ends the sleep still going, or before anything else it is the morning.
+  const woke = (t: number, p: string) => {
+    if (open) { rows.push({ k: 'sleep', s: open.s, e: t, p: open.quiet ? p : `${open.p}, ${p}` }); open = null; after = t; return true }
+    if (!rows.length) { rows.push({ k: 'wake', t, p }); after = t; return true }
+    return false
+  }
   for (const p of text.split(SPLIT).map((x) => x.trim()).filter(Boolean)) {
     if (NOT_SLEEP.test(p) || NIGHT.test(p)) { left.push(p); continue }
-    const long = p.match(LONG), mins = minutes(long), cs = clocks(long ? p.replace(long[0], ' ') : p)
-    if (cs.length >= 2) {
+    const long = p.match(LONG), mins = minutes(long), q = long ? p.replace(long[0], ' ') : p, cs = clocks(q)
+    if (cs.length >= 2 && upFirst(p)) {
+      // Awake from the first time, down at the second, and asleep until the next wake-up.
+      const t = place(cs[0], after, now), d = place(cs[1], t + 1, now)
+      if (t > now) { left.push(p); continue }
+      const used = woke(t, p)
+      after = Math.max(after, t)
+      if (d <= now) { open = { s: d, p, quiet: used }; after = d } else if (!used) left.push(p)
+    } else if (cs.length >= 2) {
       const s = place(cs[0], after, now), e = place(cs[1], s + 1, now)
       if (e <= now) { shut(); rows.push({ k: 'sleep', s, e, p }); after = e } else left.push(p)
+    } else if (cs.length === 1 && SLEEPS.test(p) && TILL.test(q.slice(0, cs[0].at))) {
+      // `slept until 7:30` is the wake-up at 7:30.
+      const t = place(cs[0], after, now)
+      if (t > now || !woke(t, p)) left.push(p)
     } else if (cs.length === 1 && SLEEPS.test(p) && !ENDS.test(p)) {
       const s = place(cs[0], after, now)
       if (s > now) left.push(p)
@@ -70,10 +96,7 @@ export function readTyped (text: string, baby: Baby, now: number): { rows: Typed
       else { shut(); open = { s, p }; after = s }
     } else if (cs.length === 1 && WAKES.test(p)) {
       const t = place(cs[0], after, now)
-      if (t > now) left.push(p)
-      else if (open) { rows.push({ k: 'sleep', s: open.s, e: t, p: `${open.p}, ${p}` }); open = null; after = t }
-      else if (!rows.length) { rows.push({ k: 'wake', t, p }); after = t }
-      else left.push(p)
+      if (t > now || !woke(t, p)) left.push(p)
     } else left.push(p)
   }
   const o = open as { s: number; p: string } | null

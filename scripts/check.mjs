@@ -375,6 +375,27 @@ if (PUPPETEER && !fails.length) {
     await done(p)
   }
 
+  // 11 October 2026: a morning typed as up from one time until another, then asleep until a time.
+  // Up to 1.0.23 only the last nap went in.
+  {
+    const p = await open('typed-awake', seed('tomorrow'))
+    await expect(p, 'When did Oisín wake up this morning?')
+    await tap(p, 'Type what happened')
+    await p.type('[data-testid=typed]', 'Up at 5am until 6 then sleep until 7.30 then sleep from 7.45 to 8.30')
+    await expect(p, '6 to 7:30am')
+    await expect(p, '7:45 to 8:30am')
+    await absent(p, 'Not added')
+    await look(p, 'typed-awake-sheet')
+    await p.evaluate(() => [...document.querySelectorAll('[role=button]')].filter((e) => e.innerText.trim() === 'Save').pop()?.click())
+    await new Promise((r) => setTimeout(r, 400))
+    await expect(p, 'Saved. Next nap')
+    await expect(p, '5am')
+    await expect(p, '6 to 7:30am')
+    await expect(p, '7:45 to 8:30am')
+    await look(p, 'typed-awake')
+    await done(p)
+  }
+
   // A phone set up on version 1.0.0 is asked about the morning when the update opens.
   {
     const p = await open('v1', seed('v1'))

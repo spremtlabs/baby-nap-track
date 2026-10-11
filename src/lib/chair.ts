@@ -143,9 +143,9 @@ export function chairIntro (E: Engine, now: number): Intro {
       `If ${N} wakes in the night, sit in your chair until ${N}'s back asleep.`,
       'On night 13 you say goodnight and leave the room.',
     ],
-    // 11 October 2026: the line carries the name of who says it. No success rate is given, because
-    // no trial tests this plan by itself.
-    goes: ["The HSE says the first few nights are hard, and you'll start to see a change within a week or so."],
+    // Each line carries whose finding it is. The figure is for sleep training as a whole, because no
+    // trial tests this plan by itself.
+    goes: [KNOWN.most, KNOWN.roomAfter, "The HSE says the first few nights are hard, and you'll start to see a change within a week or so."],
     cta: startsTonight(newChair(E, now), now) ? 'Start tonight' : 'Start tomorrow night',
   }
 }
@@ -229,11 +229,36 @@ export function chairCard (E: Engine, c: Chair | null | undefined, now: number):
   }
 }
 
+// What is known about sleep training, each line with whose finding it is. 11 October 2026: the
+// figure is a count of studies, since the share of children who improved came from a few of them.
+// Each line says sleep training, since no trial tests this plan by itself.
+const KNOWN = {
+  most: 'Sleep training brought easier bedtimes and fewer night wakings in 49 of 52 studies. Over 2,500 babies and toddlers took part.',
+  // On the sheet this follows the line above. Under the chart it stands alone.
+  roomAfter: 'Four of those studies had a parent stay in the room, and it worked in all four.',
+  room: 'Sleep training with a parent in the room worked in all four studies that tested it.',
+  week: "The HSE says you'll start to see a change within a week or so.",
+}
+// One a morning for the first six, so no two mornings running say the same. After that the figure
+// comes back on the morning after a slower night.
+const NOTES = [KNOWN.week, KNOWN.most, KNOWN.room, KNOWN.most, KNOWN.week, KNOWN.room]
+const PRAISE = ['Brilliant!', 'Amazing!', 'Well done!']
+// What the HSE says about how it goes, by the night just gone.
+const hseSays = (ln: number) => (ln <= 2 ? 'the first few nights are hard' : ln <= 4 ? 'night 3 or 4 is often harder than night 1' : 'the plan can take a few weeks to work')
+
 // The chart under Today's list: minutes to fall asleep, one bar a night, grouped by place. Under
-// it, what the last settling and the night said. Where to sit tonight is on the note at the top of
-// Today and on the card at bedtime, so the chart leaves it out. After a lot of crying the line
-// goes by the night: the first two, the third and fourth, and the ones after.
-export type Chart = { groups: { label: string; bars: ({ min: number; last: boolean } | null)[] }[]; max: number; say: string[] }
+// it the app coaches. `head` reads last night against night 1 and the night before, `say` is what
+// the parent did and how the night went, and `note` is one line of what is known about sleep
+// training. On a move day `stay` is the link that keeps the parent where they are one more night;
+// at bedtime that link is on the card, so the chart leaves it out. Where to sit tonight is on the
+// note at the top of Today, and the bars carry the minutes, so neither is said again here.
+// 11 October 2026: the lines under the chart were a flat list, and a parent could stay longer in a
+// place only at bedtime.
+export type Chart = {
+  groups: { label: string; bars: ({ min: number; last: boolean } | null)[] }[]; max: number
+  head: string; say: string[]; note: string
+  stay: { line: string; link: string } | null
+}
 export function chairChart (E: Engine, c: Chair | null | undefined, now: number): Chart | null {
   if (!c || !c.settles.length) return null
   const t = tonight(c, now), plan = nights(c, t.n + 4 * NIGHTS_AT + 4), byNight = new Map(c.settles.map((s) => [s.night, s]))
@@ -247,16 +272,41 @@ export function chairChart (E: Engine, c: Chair | null | undefined, now: number)
   }))
   const max = Math.max(30, ...c.settles.map((s) => (s.asleep - s.inCot) / MIN))
   const N = E.baby.name, say: string[] = []
-  // The settling just gone, against night 1.
+  let head = '', note = ''
+  // The settling just gone, against night 1 and the night before.
   if (now - last.asleep < 20 * HOUR) {
-    const same = last.night === t.key, when = same ? 'Tonight' : 'Last night', ms = last.asleep - last.inCot, first = byNight.get(plan[0].key), ln = nightOf(c, last.night)
-    say.push(ms < MIN ? `${when} ${N} was asleep in under a minute.` : `${when} ${N} fell asleep in ${dur(ms)}.`)
-    if (first && first !== last && first.asleep - first.inCot - ms >= 2 * MIN) say.push(`That's ${dur(first.asleep - first.inCot - ms)} faster than night 1!`)
-    if (last.trips != null) say.push(tripLine(last.trips))
-    if (last.cry === 'none') say.push('There was no crying.')
-    if (last.cry === 'some') say.push('There was some crying.')
-    if (last.cry === 'lot') say.push(`There was a lot of crying. The HSE says ${ln <= 2 ? 'the first few nights are hard' : ln <= 4 ? 'night 3 or 4 is often harder than night 1' : 'it can take a few weeks'}, so keep going.`)
-    if (same && ln === 1) say.push("That's night 1 done. Well done!")
+    const same = last.night === t.key, ms = last.asleep - last.inCot, ln = nightOf(c, last.night)
+    const first = byNight.get(plan[0].key), before = byNight.get(keyOf(c, ln - 1)), was = plan[ln - 1]
+    const gain = first && first !== last ? first.asleep - first.inCot - ms : 0
+    // Slower than night 1, or no faster: the heading steadies, and what the HSE says of that night follows.
+    const tough = !same && ln > 1 && ms >= MIN && gain < 2 * MIN
+    // Faster than night 1 and slower than the night before, as the first night in a new place can be.
+    const dip = !!before && before !== last && ms - (before.asleep - before.inCot) >= 2 * MIN
+    const moved = !!was && was.move && was.place > 0 && !c.held.includes(was.key)
+    if (same) {
+      head = `That's night ${ln} done. Well done!`
+      say.push(ms < MIN ? `${N} was asleep in under a minute.` : `${N} fell asleep in ${dur(ms)}.`)
+      if (gain >= 2 * MIN) say.push(`That's ${dur(gain)} faster than on night 1.`)
+    } else if (ms < MIN) head = `${PRAISE[ln % PRAISE.length]} ${N} was asleep in under a minute.`
+    else if (ln === 1) head = `${N} fell asleep in ${dur(ms)} on night 1. That's the one to beat!`
+    else if (tough) head = `${N} took ${dur(ms)} to fall asleep last night. Hang in there!`
+    else if (dip) head = moved ? `${dur(ms)} on the first night ${PLACES[was.place]}. That's still ${dur(gain)} faster than night 1!` : `${N} fell asleep in ${dur(ms)}. That's still ${dur(gain)} faster than on night 1!`
+    else head = `${PRAISE[ln % PRAISE.length]} ${N} fell asleep ${dur(gain)} faster than on night 1.`
+    // What the parent did. A count of trips is said when it is none, or fewer than the night before.
+    const cry = last.cry
+    if (last.trips === 0) say.push(`You stayed in your chair the whole time${cry === 'none' ? ', and there was no crying at all' : cry === 'some' ? ', even through some crying' : cry === 'lot' ? ', even through a lot of crying' : ''}!`)
+    else {
+      if (last.trips != null && before?.trips != null && before.trips > last.trips) say.push(`You went over ${times(last.trips)}, down from ${before.trips} the night before.`)
+      if (cry === 'none') say.push('There was no crying at all!')
+      if (cry === 'some') say.push(`There was some crying, and you stayed right there with ${N}.`)
+      if (cry === 'lot') say.push(`There was a lot of crying, and you stayed right there with ${N}.`)
+    }
+    if (tough || cry === 'lot') say.push(`The HSE says ${hseSays(ln)}${tough ? '' : ', so keep going'}.`)
+    // The card under the lines. A morning whose lines carry the HSE gets the figure, so the HSE is said once.
+    if (!same) {
+      note = ln <= NOTES.length ? NOTES[ln - 1] : tough ? KNOWN.most : ''
+      if (note === KNOWN.week && (tough || cry === 'lot')) note = KNOWN.most
+    }
   }
   // The night, from the log: the wakings and how long the baby took to go back to sleep.
   const ln = E.lastNight()
@@ -265,12 +315,21 @@ export function chairChart (E: Engine, c: Chair | null | undefined, now: number)
     if (!gaps.length) say.push(`${N} slept through the night!`)
     else {
       const avg = gaps.reduce((a, x) => a + x, 0) / gaps.length
-      say.push(gaps.length === 1 ? `${N} woke once and was back asleep in ${dur(avg)}.` : `${N} woke ${times(gaps.length)} and was back asleep in ${dur(avg)} on average.`)
+      say.push(gaps.length === 1 ? `${N} woke once in the night and was back asleep in ${dur(avg)}.` : `${N} woke ${times(gaps.length)} in the night and was back asleep in about ${dur(avg)} each time.`)
     }
   }
-  // A hard night before a move night: the card at bedtime has the link that keeps the parent in place.
-  if (t.key !== last.night && t.move && !t.held && t.place < 4 && hard(last)) say.push(`Last night was hard. You can stay ${STAY[t.place - 1]} one more night if you'd like.`)
-  return { groups, max, say }
+  // A move day, before bedtime: one more night in the same place, or the move after all.
+  let stay: Chart['stay'] = null
+  const ph = E.phase()
+  if (t.key !== last.night && t.move && !t.settled && (ph === 'day' || ph === 'nap') && !chairCard(E, c, now)) {
+    const at = Math.max(0, t.held ? t.place : t.place - 1), here = STAY[at]
+    // The 3 to 4 nights the HSE gives covers a fourth night at a place inside the room, and no more.
+    const fourth = at < 3 && plan.filter((x) => x.n < t.n && x.place === at).length === NIGHTS_AT
+    stay = t.held
+      ? { line: `You're taking one more night ${here}.`, link: 'Move your chair tonight' }
+      : { line: `You can take one more night ${here}.${fourth ? ' The HSE says to move every 3 to 4 nights.' : ''}`, link: `Stay ${here} one more night` }
+  }
+  return { groups, max, head, say, note, stay }
 }
 
 // What Settings says while the plan runs.

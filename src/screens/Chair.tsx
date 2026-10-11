@@ -61,7 +61,7 @@ export function ChairCard ({ card, onHold }: { card: Card; onHold: () => void })
 }
 
 // Minutes to fall asleep, one bar a night, in the four places the parent sits. Last night's is honey.
-export function ChairChart ({ chart, ask }: { chart: Chart; ask?: React.ReactNode }) {
+export function ChairChart ({ chart, ask, onHold }: { chart: Chart; ask?: React.ReactNode; onHold: () => void }) {
   const t = useTheme(), top = 92
   return (
     <View>
@@ -90,7 +90,25 @@ export function ChairChart ({ chart, ask }: { chart: Chart; ask?: React.ReactNod
           </View>
         ))}
       </View>
-      <View style={{ marginTop: 16, gap: 8 }}>{chart.say.map((x, i) => <T key={i} size={16} style={{ lineHeight: 23 }}>{x}</T>)}</View>
+      {/* The coach: a heading for last night, what happened, one line of what is known, and on a
+          move day the link that keeps the parent where they are. */}
+      <View testID="chair-coach" style={{ marginTop: 18, gap: 8 }}>
+        {chart.head ? <T w="semibold" size={19} style={{ lineHeight: 26, marginBottom: 2 }}>{chart.head}</T> : null}
+        {chart.say.map((x, i) => <T key={i} size={16} style={{ lineHeight: 23 }}>{x}</T>)}
+      </View>
+      {chart.note ? (
+        <View testID="chair-known" style={{ marginTop: 14, backgroundColor: t.soft, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 16 }}>
+          <T size={15} style={{ lineHeight: 22 }}>{chart.note}</T>
+        </View>
+      ) : null}
+      {chart.stay ? (
+        <View testID="chair-stay" style={{ marginTop: 14 }}>
+          <T size={15.5} style={{ lineHeight: 22 }}>{chart.stay.line}</T>
+          <Pressable accessibilityRole="button" onPress={onHold} hitSlop={6} style={{ minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' }}>
+            <T size={15.5} style={{ textDecorationLine: 'underline', textDecorationColor: t.muted }}>{chart.stay.link}</T>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   )
 }

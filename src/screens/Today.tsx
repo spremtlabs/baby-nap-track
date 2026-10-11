@@ -133,7 +133,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
 
         {unknown ? null : <DaySleepSection E={E} g={g} />}
         {unknown ? null : <TodaySection E={E} g={g} onEdit={onEdit} onNight={onNight} onAdd={onAdd} onWake={onWake} onGap={onGap} onNoNap={onNoNap} onOut={onOut} />}
-        {chart ? <ChairChart chart={chart} ask={ask && !askTonight ? askCard : null} /> : null}
+        {chart ? <ChairChart chart={chart} ask={ask && !askTonight ? askCard : null} onHold={onHold} /> : null}
         <WeekSection E={E} />
       </Animated.ScrollView>
     </View>

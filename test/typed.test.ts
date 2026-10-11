@@ -5,12 +5,12 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { engine, type Sleep } from '../src/lib/engine.ts'
 import { savedLine, todayRows } from '../src/lib/model.ts'
-import { applyTyped, readTyped, typed, type TypedRow } from '../src/lib/typed.ts'
+import { applyTyped, readTyped, typed, type TypedEnd, type TypedRow } from '../src/lib/typed.ts'
 import { OISIN, at, sleep, week } from './sample.ts'
 
 const log = (): Sleep[] => [...week(), sleep(at(0, 12, 20), at(0, 13, 35), 'nap'), sleep(at(0, 16, 15), at(0, 16, 55), 'nap')]
 const now = at(1, 8, 25)
-const plain = (rows: TypedRow[]) => rows.map((x) => (x.k === 'wake' ? ['woke', x.t] : [x.s, x.e]))
+const plain = (rows: (TypedRow | TypedEnd)[]) => rows.map((x) => (x.k === 'wake' ? ['woke', x.t] : x.k === 'end' ? ['end', x.s, x.t] : [x.s, x.e]))
 const said = (text: string, t = now) => plain(readTyped(text, OISIN, t).rows)
 let n = 0
 const id = () => `t${++n}`
@@ -80,4 +80,28 @@ test('a row the parent changed or took out replaces what was read, until the wor
   const fixed = typed(text, OISIN, log(), now, { 1: { k: 'sleep', s: at(1, 6, 5), e: at(1, 7, 30), p: 'napped 6:10 to 7:28' } })
   assert.deepEqual(plain(fixed.rows), [['woke', at(1, 5, 40)], [at(1, 6, 5), at(1, 7, 30)]])
   assert.deepEqual(plain(typed(text, OISIN, log(), now, { 0: null }).rows), [[at(1, 6, 10), at(1, 7, 28)]])
+})
+
+// 11 October 2026: sleep updates typed through the day. A wake-up on its own at midday was read as
+// the morning and would have moved the day's start to 1:15pm.
+test('a wake-up typed later in the day ends the running nap, and is not added with nothing running', () => {
+  const day = week(), t = at(0, 13, 20)
+  const midday = typed('woke at 1:15', OISIN, day, t)
+  assert.deepEqual([midday.rows, midday.left], [[], ['woke at 1:15']])
+  const running = [...day, sleep(at(0, 12, 30), null, 'nap')], id0 = running[running.length - 1].id
+  const r = typed('woke at 1:15', OISIN, running, t)
+  assert.deepEqual(plain(r.rows), [['end', at(0, 12, 30), at(0, 13, 15)]])
+  const x = applyTyped(OISIN, running, t, r, id, false), nap = x.sleeps.find((y) => y.id === id0)
+  assert.deepEqual([nap?.s, nap?.e, x.ids], [at(0, 12, 30), at(0, 13, 15), [id0]])
+  assert.equal(engine(OISIN, x.sleeps, t).dayStart().t, at(0, 6, 55))
+  // The morning logged at 6:55 can still be put right before the first nap.
+  assert.deepEqual(plain(typed('up at 6:40', OISIN, day, t).rows), [['woke', at(0, 6, 40)]])
+})
+
+test('a wake-up typed while the night is still running ends the night, up for the day', () => {
+  const l = [...week().filter((x) => x.s < at(0, 4, 0)), sleep(at(0, 4, 12), null, 'night')], t = at(0, 7, 5)
+  const r = typed('up at 6:50, down 6:55 to 7', OISIN, l, t)
+  assert.deepEqual(plain(r.rows), [['end', at(0, 4, 12), at(0, 6, 50)], [at(0, 6, 55), at(0, 7, 0)]])
+  const E = engine(OISIN, applyTyped(OISIN, l, t, r, id, false).sleeps, t)
+  assert.deepEqual([E.dayStart().t, E.phase()], [at(0, 6, 50), 'day'])
 })

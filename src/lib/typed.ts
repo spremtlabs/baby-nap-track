@@ -6,10 +6,12 @@
    before anything else is the morning. A feed, the night, a piece with no time and a time still to
    come are not added, and the sheet lists each one in the parent's own words. A time with no am or
    pm goes on the latest time of day that has passed, in the order the pieces were typed. */
-import { DAY, MIN, asLogged, dayAt, dayFloor, isMark, kindFor, withMorning, type Baby, type Sleep } from './engine.ts'
+import { DAY, HOUR, MIN, asLogged, dayAt, dayFloor, engine, isMark, kindFor, withMorning, type Baby, type Sleep } from './engine.ts'
 
 export type TypedRow = { k: 'wake'; t: number; p: string } | { k: 'sleep'; s: number; e: number | null; p: string }
-export type Typed = { rows: (TypedRow & { i: number })[]; left: string[]; drop: string[] }
+// A wake-up that ends the sleep the timer is running: a nap, or the night, which is then up for the day.
+export type TypedEnd = { k: 'end'; id: string; s: number; t: number; night: boolean; p: string }
+export type Typed = { rows: ((TypedRow | TypedEnd) & { i: number })[]; left: string[]; drop: string[] }
 
 const HR = '(\\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)'
 const TIME = new RegExp(`\\b(?:(quarter|half|five|ten|twenty(?:[- ]five)?)\\s+(past|to)\\s+${HR}|half\\s+${HR}|(\\d{1,2})(?:[:.](\\d{2}))?\\s*(am|pm|a\\.m\\.|p\\.m\\.)?|(noon|midday))(?![\\w:])`, 'gi')
@@ -79,15 +81,30 @@ export function readTyped (text: string, baby: Baby, now: number): { rows: Typed
   return { rows, left }
 }
 
-// The rows checked against the log, after the parent's own changes to them. A sleep over a nap in
-// the log takes its place, the timer's running nap too. A sleep over the night is not added.
+// The rows checked against the log, after the parent's own changes to them. A wake-up on its own
+// ends the sleep the timer is running. With nothing running it is the morning, while no nap comes
+// before it and it is within three hours of the wake-up already logged; later in the day it is not
+// added. A sleep over a nap in the log takes its place, the timer's running nap too. A sleep over
+// the night is not added.
 export function typed (text: string, baby: Baby, log: Sleep[], now: number, fixes: Record<number, TypedRow | null> = {}): Typed {
   const r = readTyped(text, baby, now), left = [...r.left], drop: string[] = [], rows: Typed['rows'] = []
-  const read = r.rows.map((x, i) => { const f = i in fixes ? fixes[i] : x; return f ? { ...f, i } : null }).filter((x): x is TypedRow & { i: number } => x != null)
+  const live = log.filter((x) => !x.deleted && !isMark(x)).map((x) => asLogged(baby, x)), ds = engine(baby, log, now).dayStart()
+  const read: Typed['rows'] = []
+  r.rows.forEach((x0, i) => {
+    const x = i in fixes ? fixes[i] : x0
+    if (!x) return
+    if (x.k !== 'wake') { read.push({ ...x, i }); return }
+    const run = live.find((y) => y.e == null && y.s < x.t)
+    const morning = ds.unknown || (Math.abs(x.t - ds.t) <= 3 * HOUR && !live.some((y) => y.kind === 'nap' && y.s >= ds.t && y.s < x.t))
+    if (run) read.push({ k: 'end', id: run.id, s: run.s, t: x.t, night: run.kind === 'night', p: x.p, i })
+    else if (morning) read.push({ ...x, i })
+    else left.push(x.p)
+  })
   const wake = read.find((x) => x.k === 'wake')
-  const after = (wake ? withMorning(baby, log, now, wake.t, 'typed').sleeps : log).filter((x) => !x.deleted && !isMark(x)).map((x) => asLogged(baby, x))
+  const ended = ends(log, read, now)
+  const after = (wake && wake.k === 'wake' ? withMorning(baby, ended, now, wake.t, 'typed').sleeps : ended).filter((x) => !x.deleted && !isMark(x)).map((x) => asLogged(baby, x))
   for (const x of read) {
-    if (x.k === 'wake') { rows.push(x); continue }
+    if (x.k !== 'sleep') { rows.push(x); continue }
     const end = x.e ?? now, hits = after.filter((y) => y.s < end && (y.e ?? now) > x.s)
     if (hits.some((y) => y.kind === 'night')) left.push(x.p)
     else { drop.push(...hits.map((y) => y.id)); rows.push(x) }
@@ -95,11 +112,17 @@ export function typed (text: string, baby: Baby, log: Sleep[], now: number, fixe
   return { rows, left, drop: [...new Set(drop)] }
 }
 
-// The log with the typed rows in it: the morning first, then the naps that are replaced, then
-// each new sleep. `ids` lists every row that changed, for a shared log.
+// The running sleep each typed wake-up ends, ended then. A night that ends is up for the day.
+function ends (log: Sleep[], rows: Typed['rows'], now: number) {
+  const end = new Map(rows.flatMap((x) => (x.k === 'end' ? [[x.id, x] as const] : [])))
+  return log.map((y) => { const x = end.get(y.id); return x ? { ...y, e: x.t, up: x.night ? true : y.up, updatedAt: now } : y })
+}
+
+// The log with the typed rows in it: the running sleep ended, the morning, then the naps that are
+// replaced, then each new sleep. `ids` lists every row that changed, for a shared log.
 export function applyTyped (baby: Baby, log: Sleep[], now: number, r: Typed, id: () => string, share: boolean): { sleeps: Sleep[]; ids: string[] } {
-  let sleeps = log
-  const ids: string[] = []
+  let sleeps = ends(log, r.rows, now)
+  const ids: string[] = r.rows.flatMap((x) => (x.k === 'end' ? [x.id] : []))
   for (const x of r.rows) if (x.k === 'wake') { const m = withMorning(baby, sleeps, now, x.t, id()); sleeps = m.sleeps; ids.push(m.id) }
   const gone = new Set(r.drop)
   sleeps = share ? sleeps.map((x) => (gone.has(x.id) ? { ...x, deleted: true, updatedAt: now } : x)) : sleeps.filter((x) => !gone.has(x.id))

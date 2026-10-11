@@ -363,9 +363,13 @@ if (PUPPETEER && !fails.length) {
     await expect(p, '5:40am')
     await expect(p, '6:10 to 7:30am')
     await absent(p, 'fed at 6')
-    // The link under Today's list opens the same sheet for later in the day.
+    // The link under Today's list opens the same sheet for later in the day. A wake-up on its own
+    // after a nap, with nothing running, is not the morning.
     await tap(p, 'Type what happened')
     await expect(p, 'Each sleep shows up here as you type.')
+    await p.type('[data-testid=typed]', 'woke at 7:50')
+    await expect(p, '\u201Cwoke at 7:50\u201D')
+    if ((await save(false)) !== true) fail('typed', 'Save could be tapped with only a wake-up after a nap')
     await done(p)
   }
 

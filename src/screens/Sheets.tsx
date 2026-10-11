@@ -447,16 +447,18 @@ export function TypedSheet ({ open, onClose, onToast }: { open: boolean; onClose
   const now = Date.now(), r = typed(text, baby, st.state.sleeps, now, fixes)
   const fix = (i: number, x: TypedRow | null) => setFixes({ ...fixes, [i]: x })
   const shown = r.rows.map((x) => {
-    const row: Row = x.k === 'wake'
+    const e = x.k === 'end' ? x.t : x.k === 'sleep' ? x.e : null
+    const row: Row = x.k === 'wake' || (x.k === 'end' && x.night)
       ? { at: x.t, mark: 'edge', title: 'Woke up', right: fmt(x.t) }
-      : x.e == null
+      : e == null
         ? { at: x.s, mark: 'done', title: kindFor(baby, x.s) === 'nap' ? 'Napping' : 'Asleep', sub: `since ${fmt(x.s)}`, right: dur(now - x.s) }
-        : { at: x.s, mark: 'done', title: kindFor(baby, x.s) === 'nap' ? 'Nap' : 'Night', sub: range(x.s, x.e, ' to '), right: dur(x.e - x.s) }
+        : { at: x.s, mark: 'done', title: kindFor(baby, x.s) === 'nap' ? 'Nap' : 'Night', sub: range(x.s, e, ' to '), right: dur(e - x.s) }
     return { row, x }
   })
-  const change = (x: (typeof r.rows)[number]) => (x.k === 'wake'
+  // A wake-up opens the time; a sleep, the ended nap among them, opens the nap's two times.
+  const change = (x: (typeof r.rows)[number]) => (x.k === 'wake' || (x.k === 'end' && x.night)
     ? () => setWoke({ i: x.i, p: x.p, t: x.t })
-    : () => setEd({ i: x.i, p: x.p, x: { id: 'typed', s: x.s, e: x.e, kind: kindFor(baby, x.s), updatedAt: now } }))
+    : () => { const e = x.k === 'end' ? x.t : x.e; setEd({ i: x.i, p: x.p, x: { id: 'typed', s: x.s, e, kind: kindFor(baby, x.s), updatedAt: now } }) })
   return (
     <Sheet open={open} onClose={onClose}>
       {ed ? (

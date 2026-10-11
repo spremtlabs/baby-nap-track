@@ -133,7 +133,9 @@ test('set up at 1pm with the morning entered: the morning nap counts and the nap
   const s = screen([mark(at(0, 6, 50)), sleep(at(0, 9, 15), at(0, 10, 20), 'nap')], at(0, 13, 0))
   assert.equal(s.eyebrow, 'Nap window open')
   assert.equal(s.sub, 'Put Oisín down before 1:05pm.')
-  assert.equal(s.say, '1 h 55 min to go. Aim for that in the next nap.')
+  // Up to 1.0.22 the next nap was the last, and Oisín was awake from about 2pm until bed. From 1.0.23
+  // a short nap goes in after it.
+  assert.equal(s.say, '1 h 55 min to go, across 2 more naps.')
   assert.equal(plain(daySleep(s.E).so), '1 h 5 min')
   assert.deepEqual(todayRows(s.E).rows.slice(0, 3).map((r) => `${r.title} ${r.right}`), ['Last night Add', 'Woke up 6:50am', 'Nap 1 h 5 min'])
 })

@@ -6,7 +6,19 @@ import { CIAN, OISIN, at, sleep, week } from '../test/sample.ts'
 
 export const STORE_KEY = 'snug.state.v1'
 
-export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'short-last' | 'young'): { state: string; now: number } {
+export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'short-last' | 'young' | 'fewer'): { state: string; now: number } {
+  // Two naps of an hour and a half on 3 of the last 5 days, three of an hour on the others, and up at
+  // 7 today: Today offers the day with 2 naps, from 1.0.23.
+  if (scenario === 'fewer') {
+    const sleeps = []
+    ;[3, 2, 3, 2, 2].forEach((n, i) => {
+      const d = i - 5
+      sleeps.push(sleep(at(d - 1, 19, 0), at(d, 7, 0), 'night', true))
+      for (const [h, m] of n === 2 ? [[9, 30], [14, 0]] : [[9, 0], [12, 30], [16, 0]]) sleeps.push(sleep(at(d, h, m), at(d, h, m) + (n === 2 ? 90 : 60) * MIN, 'nap'))
+    })
+    sleeps.push(sleep(at(-1, 19, 0), at(0, 7, 0), 'night', true))
+    return { state: JSON.stringify({ baby: OISIN, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 7, 30) }
+  }
   // A baby of ten weeks, for the chair method in Settings before six months, from 1.0.18.
   if (scenario === 'young') {
     return { state: JSON.stringify({ baby: CIAN, sleeps: week(), alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 11, 35) }

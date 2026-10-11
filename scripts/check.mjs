@@ -1,6 +1,7 @@
 // The gate. `npm run check` runs the type check and the tests first, then this: guards on the
 // source, then the web build of the real app walked in a headless browser at phone size through
-// setup with this morning's nap, the morning, a nap and its timer, Settings, editing a sleep, the 4pm example,
+// setup with this morning's nap, the morning, a nap and its timer, Settings with the aim, the nap count and a
+// wake window set and cleared, editing a sleep, the 4pm example, the offer of one nap fewer,
 // the 5 October evening, a stretch with no nap logged, going out, the help chat,
 // the night, the chair method at bedtime, settling and the next morning, and at ten weeks, last night changed from
 // the list and from the toast after up for the day, the sleep diary
@@ -300,7 +301,8 @@ if (PUPPETEER && !fails.length) {
     await tap(p, 'Save')
     await tap(p, 'Done')
     await expect(p, 'Nap window open')
-    await expect(p, '1 h 55 min to go. Aim for that in the next nap.')
+    // Up to 1.0.22 the next nap was the last of the day. From 1.0.23 a short nap goes in after it.
+    await expect(p, '1 h 55 min to go, across 2 more naps.')
     await absent(p, 'Nap needed')
     await look(p, 'setup-1pm')
     await done(p)
@@ -423,6 +425,28 @@ if (PUPPETEER && !fails.length) {
     await expect(p, "Oisín's day")
     await tap(p, 'Bedtime, more')
     await expect(p, '7:15')
+    // From 1.0.23: the aim says where it comes from, a wake window set here moves Today's time and
+    // stays until it is worked out again, and the nap count can drop by one.
+    await expect(p, 'You set this. Most babies at 6 months sleep about 3 hours in the day.')
+    await tap(p, "Go by Oisín's nights instead")
+    await expect(p, 'a night this week, so the aim is')
+    await tap(p, 'Day sleep to aim for, more')
+    await expect(p, 'You set this.')
+    await expect(p, "Oisín's naps")
+    // The 10:50 nap was 30 minutes, so the window before nap 3 is cut to 85% and the time moves by 10.
+    await tap(p, 'Awake before nap 3, more')
+    await expect(p, "You set the window before nap 3. The others move with Oisín's naps.")
+    await look(p, 'settings-naps')
+    await tap(p, 'Done')
+    await expect(p, 'Put Oisín down between 1:30 and 1:50pm.')
+    await tap(p, 'Settings')
+    await tap(p, 'Work them all out again')
+    await expect(p, "Baby Nap Track works these out from Oisín's age")
+    await tap(p, '2 naps')
+    await absent(p, 'Awake before nap 3')
+    await expect(p, 'On 2 naps a day most babies are ready for a nap after 2 h 30 min to 3 h 30 min awake')
+    await tap(p, '3 naps')
+    await expect(p, 'Awake before nap 3')
     // Play requires the app itself to link to its privacy page.
     await expect(p, 'Privacy')
     await absent(p, 'Send counts of how Baby Nap Track is used')
@@ -659,6 +683,22 @@ if (PUPPETEER && !fails.length) {
     await look(p, 'short-last-bed')
     await tap(p, 'Nap sooner')
     await expect(p, 'Put Oisín down between 2:45 and 3:05pm.')
+    await done(p)
+  }
+
+  // Two naps on 3 of the last 5 days, from 1.0.23: Today offers the day with 2 naps beside the day
+  // with 3, a tap on 2 naps plans them, and Settings keeps it.
+  {
+    const p = await open('fewer', seed('fewer'))
+    await expect(p, 'Oisín had 2 naps on 3 of the last 5 days.')
+    await expect(p, 'No room for a third today.')
+    await look(p, 'fewer')
+    await tap(p, '2 naps a day')
+    await expect(p, 'Baby Nap Track plans 2 naps a day for Oisín now. You can change it in Settings.')
+    await absent(p, 'Oisín had 2 naps on')
+    await tap(p, 'Settings')
+    await expect(p, 'On 2 naps a day most babies are ready for a nap after 2 h 30 min to 3 h 30 min awake')
+    await absent(p, 'Awake before nap 3')
     await done(p)
   }
 
@@ -1047,4 +1087,4 @@ if (fails.length) {
   for (const f of fails) console.log('  ' + f)
   process.exit(1)
 }
-console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings, adding a sleep, the 4pm example, a short morning nap, a short nap with one nap left and the two ways to make it up, the night, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, and what PostHog hears at each step')
+console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings with the aim, the nap count and a wake window set and cleared, adding a sleep, the 4pm example, a short morning nap, a short nap with one nap left and the two ways to make it up, the offer of one nap fewer, the night, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, and what PostHog hears at each step')

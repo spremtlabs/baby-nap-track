@@ -42,13 +42,21 @@ export type Baby = {
   // shown first the next time.
   route?: { day: number; pick: Route; by: number; first?: Route } | null
   routeLikes?: Route | null
+  // Naps a day, when the parent moved to one fewer than most babies this age take. It lapses once
+  // the age's own count is no higher. `napsAsked` is when the move was last offered on Today.
+  naps?: number | null
+  napsAsked?: number | null
+  // The parent's own wake window before each nap, in minutes, by nap. An empty place is worked out.
+  windows?: (number | null)[] | null
+  // The parent set the day sleep aim. Until then it follows the last week of nights, from 1.0.23.
+  aimSet?: boolean
 }
 
 export type Route = 'sooner' | 'bed'
 
 // The last moment a nap runs to on the day of t, from the bedtime of that day.
 export const napsEndOf = (baby: Baby, bedT: number, wks: number) =>
-  baby.napsEnd != null ? atMins(bedT - 12 * HOUR, baby.napsEnd) : bedT - band(wks).min * MIN
+  baby.napsEnd != null ? atMins(bedT - 12 * HOUR, baby.napsEnd) : bedT - bandFor(baby, wks).min * MIN
 
 
 // A window to put the baby down. A plan for going out adds how long the nap is planned to run,
@@ -80,7 +88,19 @@ export type Band = (typeof BANDS)[number]
 const TARGETS: [number, number][] = [[8, 360], [13, 300], [17, 240], [26, 210], [35, 180], [52, 150], [78, 120], [9999, 90]]
 
 export const band = (w: number): Band => BANDS.find((b) => w < b.w) || BANDS[BANDS.length - 1]
+// The windows the day runs on: the age's, or with one nap fewer picked, those of the first age that
+// takes that many naps.
+export const bandFor = (baby: Baby, w: number): Band => {
+  const b = band(w), n = baby.naps
+  return n == null || n >= b.naps ? b : BANDS.find((x) => x.naps <= n) ?? b
+}
 export const targetFor = (w: number) => (TARGETS.find((x) => w < x[0]) || TARGETS[TARGETS.length - 1])[1]
+
+/* A night's sleep for most babies by age in weeks, in minutes. With the day sleep above it makes the
+   day's total in the baby sleep charts: about 15 and a half hours at two months, 14 and a half at four,
+   14 at six and 13 at a year. A week of short nights asks for more day sleep, and long nights less. */
+const NIGHTS: [number, number][] = [[8, 570], [13, 600], [17, 630], [9999, 660]]
+const nightFor = (w: number) => (NIGHTS.find((x) => w < x[0]) || NIGHTS[NIGHTS.length - 1])[1]
 export const defaultBed = (w: number) => (w < 12 ? 1200 : 1140)
 
 const median = (a: number[]) => {
@@ -89,6 +109,35 @@ const median = (a: number[]) => {
   return b.length % 2 ? b[m] : (b[m - 1] + b[m]) / 2
 }
 export const round5 = (ms: number) => Math.round(ms / (5 * MIN)) * 5 * MIN
+
+// The nights of the last week, from going down to up for the day, in minutes asleep. A morning typed
+// in without its night, and a night logged from partway through, are left out. `sleeps` is the log
+// as `readLog` gives it.
+export function nightsOf (sleeps: Sleep[], now: number): number[] {
+  const out: number[] = []
+  sleeps.forEach((u, i) => {
+    if (u.kind !== 'night' || !u.up || u.e == null || isMark(u) || u.e > now || u.e < now - 7 * DAY) return
+    let j = i
+    while (j > 0 && sleeps[j - 1].kind === 'night' && !sleeps[j - 1].up && sleeps[j - 1].e != null) j--
+    if (u.e - sleeps[j].s < 6 * HOUR) return
+    let asleep = 0
+    for (let k = j; k <= i; k++) asleep += sleeps[k].e! - sleeps[k].s
+    out.push(asleep / MIN)
+  })
+  return out
+}
+
+/* The day sleep to aim for. Once 3 nights of the last week are logged it is the age's day sleep moved
+   by how far the nights fall short of a usual night for the age, or run past it, by up to half an
+   hour either way. Before then it is the age's, and once the parent sets it, it is theirs. */
+export type Aim = { min: number; set: boolean; night: number | null }
+export function aimOf (baby: Baby, sleeps: Sleep[], now: number): Aim {
+  if (baby.aimSet) return { min: baby.target, set: true, night: null }
+  const w = ageWeeks(baby, now), base = targetFor(w), v = nightsOf(sleeps, now)
+  if (v.length < 3) return { min: base, set: false, night: null }
+  const night = median(v)!
+  return { min: Math.round(Math.max(base - 30, Math.min(base + 30, base + nightFor(w) - night)) / 15) * 15, set: false, night }
+}
 export const hourOf = (t: number) => { const d = new Date(t); return d.getHours() + d.getMinutes() / 60 }
 export const dayAt = (t: number, h: number, m: number) => { const d = new Date(t); d.setHours(h, m, 0, 0); return d.getTime() }
 export const atMins = (t: number, mins: number) => dayAt(t, Math.floor(mins / 60), mins % 60)
@@ -216,6 +265,9 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
 
   const bedOf = (t: number) => atMins(t + 2 * HOUR, baby.bed)
 
+  let aimMemo: Aim | null = null
+  const aim = () => (aimMemo ??= aimOf(baby, sleeps, now))
+
   // Today's pick after a short nap, and how far it brings bedtime forward.
   type Alt = { bed: boolean; by: number }
   const route = () => (baby.route && baby.route.day === dayFloor(baby, now) ? baby.route : null)
@@ -258,27 +310,38 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     return median(v) || (ageAt(now) < 12 ? 45 : 60)
   }
 
+  // The wake window before nap k, in minutes, before a short nap moves it: the parent's own, or the
+  // age's moved towards the baby's good naps once three days are logged.
+  function windowOf (k: number, wks = ageAt(now)): { len: number; set: boolean } {
+    const pin = baby.windows?.[k]
+    if (pin != null) return { len: pin, set: true }
+    const b = bandFor(baby, wks), base = b.min + (b.max - b.min) * (0.2 + 0.8 * k / b.naps)
+    const p = personal(k), w = p.m != null && p.n >= 3 ? Math.min(p.n, 7) / 7 * 0.75 : 0
+    return { len: Math.max(b.min * 0.85, Math.min(b.max * 1.1, w * (p.m ?? 0) + (1 - w) * base)), set: false }
+  }
+
   /* The sweet spot. Age sets the wake window, the baby's own good naps move it once three days
      are logged, a short nap brings the next one forward, and the naps fit between the usual
-     wake-up and the bedtime the parent set. */
+     wake-up and the bedtime the parent set. A wake window the parent set stays as set. */
   function predict (k: number, from: number, prevNap: number | null, alt: Alt = picked()): Window {
-    const wks = ageAt(from), b = band(wks), bedT = bedOf(from) - alt.by * MIN, cut = napsEndOf(baby, bedT, wks)
+    const wks = ageAt(from), b = bandFor(baby, wks), bedT = bedOf(from) - alt.by * MIN, cut = napsEndOf(baby, bedT, wks)
     const bedWin = (): Window => ({ k, bed: true, s: bedT - 15 * MIN, c: bedT, e: bedT + 15 * MIN })
-    if (k >= b.naps) {
+    // With too long to go until bed, a short nap that is over by the end of the naps.
+    const last = (): Window => {
       if ((bedT - from) / MIN > b.max * 1.15) {
         const c = round5(Math.min(from + b.max * MIN, Math.max(from + b.min * 0.85 * MIN, bedT - (b.min * 1.1 + 30) * MIN)))
         if (c + 30 * MIN <= cut) return { k, cat: true, s: c - 10 * MIN, c, e: c + 10 * MIN }
       }
       return bedWin()
     }
-    const base = b.min + (b.max - b.min) * (0.2 + 0.8 * k / b.naps)
-    const p = personal(k), w = p.m != null && p.n >= 3 ? Math.min(p.n, 7) / 7 * 0.75 : 0
-    let len = w * (p.m ?? 0) + (1 - w) * base
-    len = Math.max(b.min * 0.85, Math.min(b.max * 1.1, len))
+    if (k >= b.naps) return last()
+    let len = windowOf(k, wks).len
     if (prevNap != null && prevNap < SHORT && wks >= 12 && !alt.bed) len *= 0.85
     const c = round5(from + len * MIN)
-    if (c + (napLen(k) + b.min * 0.9) * MIN > bedT || c + 20 * MIN > cut) return bedWin()
-    const half = (p.n < 3 ? 15 : Math.max(5, Math.round(len * 0.08 / 5) * 5)) * MIN
+    // 11 October 2026: at 26 weeks a third nap too late to fit went straight to bedtime, so a baby up
+    // at 7 with naps at 9:10 and 12:40 had five hours awake before a 7pm bed. It is a short nap now.
+    if (c + (napLen(k) + b.min * 0.9) * MIN > bedT || c + 20 * MIN > cut) return last()
+    const half = (personal(k).n < 3 ? 15 : Math.max(5, Math.round(len * 0.08 / 5) * 5)) * MIN
     return { k, s: c - half, c, e: c + half }
   }
 
@@ -339,7 +402,7 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
 
   type OutPlan = { wins: Window[]; total: number; long: number | null; up: number }
   function planOut (o: Out): OutPlan {
-    const ds = dayStart(), naps = napsSince(ds.t), c = cur(), b = band(ageAt(now)), bedT = bedOf(ds.t)
+    const ds = dayStart(), naps = napsSince(ds.t), c = cur(), b = bandFor(baby, ageAt(now)), bedT = bedOf(ds.t)
     let k = ds.k0 + naps.length, from: number
     if (c) from = Math.max(now + 5 * MIN, c.s + napLen(k - 1) * MIN)
     else { const l = naps[naps.length - 1]; from = l ? l.e! : ds.t }
@@ -422,8 +485,8 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
   /* The day's sleep, and what it takes to make up the rest before bed. */
   function budget () {
     const ds = dayStart(), naps = napsSince(ds.t)
-    const so = naps.reduce((a, x) => a + (x.e ?? now) - x.s, 0), target = baby.target * MIN
-    const rem = Math.max(0, target - so), bedT = bedOf(ds.t) - picked().by * MIN, b = band(ageAt(now))
+    const so = naps.reduce((a, x) => a + (x.e ?? now) - x.s, 0), target = aim().min * MIN
+    const rem = Math.max(0, target - so), bedT = bedOf(ds.t) - picked().by * MIN, b = bandFor(baby, ageAt(now))
     const wakeBy = napsEndOf(baby, bedT, ageAt(now))
     return { so, target, rem, bedT, wakeBy, latest: wakeBy - rem, b }
   }
@@ -445,6 +508,18 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     if (now < by && !(naps.length && now > naps[0].e)) return { kind: 'by', need: B.rem, by, B }
     if (B.wakeBy - now >= 20 * MIN) return { kind: 'now', need: B.rem, B }
     return { kind: 'late', early: B.bedT - 30 * MIN, B }
+  }
+
+  /* One nap fewer. On 3 of the last 5 days logged the baby took one nap less than most babies this
+     age, so Today offers the day planned on that many. Asked once a week at most, and not once the
+     parent has moved. */
+  function fewer (): { n: number; days: number; of: number } | null {
+    if (phase() !== 'day' || dayStart().unknown || activeOut()) return null
+    const b = band(ageAt(now))
+    if (b.naps < 2 || (baby.naps != null && baby.naps < b.naps)) return null
+    if (baby.napsAsked != null && now - baby.napsAsked < 7 * DAY) return null
+    const last = pastDays().slice(-5), days = last.filter((d) => d.naps === b.naps - 1).length
+    return last.length >= 3 && days >= 3 ? { n: b.naps - 1, days, of: last.length } : null
   }
 
   // The time to wake the baby from the nap running now: the end of the day's naps. Null in the
@@ -504,7 +579,7 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
   // A stretch awake an hour past the longest window for the age, with no nap logged in it. t1 is
   // bedtime once the night has started, and null while the day is still going.
   function gapsIn (t0: number, t1: number | null, naps: Sleep[]): [number, number][] {
-    const b = band(ageAt(t0)), lim = (b.max + 60) * MIN, found: [number, number][] = []
+    const b = bandFor(baby, ageAt(t0)), lim = (b.max + 60) * MIN, found: [number, number][] = []
     let t = t0
     for (const x of naps) { if (x.s - t > lim) found.push([t, x.s]); t = x.e ?? now }
     if (t1 != null && t1 - t > lim + 30 * MIN) found.push([t, t1])
@@ -524,8 +599,8 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     baby, sleeps, now, out,
     taps: () => taps,
     cur, phase, dayStart, unknownMorning, napsSince, nightSegs, bedOf, pastDays, napLen, plan, planNormal, shortNap, lastWake, budget, makeUp, wakeAt, planNaps, theme, morning,
-    activeOut, outPlan, nightDay, gapsIn, lastNight,
-    band: () => band(ageAt(now)),
+    activeOut, outPlan, nightDay, gapsIn, lastNight, aim, fewer, windowOf,
+    band: () => bandFor(baby, ageAt(now)),
     age: () => ageAt(now),
   }
 }

@@ -156,6 +156,11 @@ function Main () {
         {st.state.baby && E
           ? <Today E={E} g={st.gate} onBuy={buy} onWeek={startWeek} onMain={main} onSettings={() => setOpen('settings')} onEdit={openEdit} onNight={() => setOpen('night')} onAdd={addMissed} onMorning={morning} onWake={() => setOpen('wake')} onGap={addGap} onOut={() => setOpen('out')} onType={() => setOpen('typed')}
               onWay={(day, pick, by, first) => st.setBaby({ route: { day, pick, by, first }, routeLikes: pick })}
+              onFewer={(n) => {
+                st.setBaby(n == null ? { napsAsked: Date.now() } : { naps: n, napsAsked: Date.now() })
+                const k = E.band().naps
+                say(n == null ? `Baby Nap Track keeps ${k} naps a day for ${E.baby.name}.` : `Baby Nap Track plans ${n === 1 ? '1 nap' : `${n} naps`} a day for ${E.baby.name} now. You can change it in Settings.`)
+              }}
               chair={E.baby.chair} onHold={() => {
                 const c = E.baby.chair
                 if (!c) return

@@ -1,6 +1,6 @@
 // What each part of the Today screen says, worked out from the engine. The screens only draw
 // these, so the wording approved in mock v4 is tested here once, in plain strings.
-import { DAY, HOUR, MIN, ageText, ageWeeks, atMins, band, dayAt, hourOf, isMark, napHours, round5, type Baby, type Engine, type Out, type Route, type Sleep, type Window } from './engine.ts'
+import { DAY, HOUR, MIN, ageText, ageWeeks, atMins, band, bandFor, dayAt, engine, hourOf, isMark, napHours, round5, targetFor, type Baby, type Engine, type Out, type Route, type Sleep, type Window } from './engine.ts'
 import { isLocked, lockedHero, offerHero, trialNote, type Gate } from './shop.ts'
 import { bigDur, bigTime, dur, fmt, hours, range, runParts, tallyDur, times, type Part } from './words.ts'
 
@@ -35,6 +35,8 @@ export type Hero = {
   // After a short nap with one nap left in the day: the two ways to make it up, the one the parent
   // picked last time first, and earlier bedtime first while the chair method runs.
   ways: Ways | null
+  // When the log shows one nap fewer than the age on most days: today planned both ways.
+  fewer: Fewer | null
 }
 export type Ways = { say: string; day: number; by: number; opts: { id: Route; title: string; line: string; on: boolean }[] }
 
@@ -54,9 +56,37 @@ function ways (E: Engine): Ways | null {
   return { say: 'That nap was short. Here are two ways to make it up.', day: s.day, by: s.by, opts }
 }
 
+// The naps still to come and tonight's bedtime, as one line, with anything to add between them.
+function dayLine (plan: Window[], also = '') {
+  const naps = plan.filter((w) => !w.bed).map((w) => fmt(w.c)), bed = plan.find((w) => w.bed)
+  const list = naps.length > 1 ? `${naps.slice(0, -1).join(', ')} and ${naps[naps.length - 1]}` : naps[0]
+  return `${naps.length ? `Nap${naps.length > 1 ? 's' : ''} at ${list}` : 'No more naps'}.${also ? ` ${also}` : ''}${bed ? ` Bedtime ${fmt(bed.c)}.` : ''}`
+}
+
+/* One nap fewer, offered on Today when the log shows it on 3 of the last 5 days. Each choice shows
+   the rest of today planned that way. Null once neither plan has a nap left. */
+export type Fewer = { say: string; n: number; opts: { id: 'fewer' | 'keep'; title: string; line: string }[] }
+export function fewerNaps (E: Engine): Fewer | null {
+  const f = E.fewer()
+  if (!f) return null
+  const now = E.plan(), then = engine({ ...E.baby, naps: f.n }, E.sleeps, E.now, E.out).plan()
+  if (!now.some((w) => !w.bed) && !then.some((w) => !w.bed)) return null
+  const naps = (n: number) => (n === 1 ? '1 nap' : `${n} naps`)
+  // Long naps can leave the day no room for the last one, and the line says so.
+  const done = E.napsSince(E.dayStart().t).filter((x) => x.e != null).length, held = done + now.filter((w) => !w.bed).length
+  const room = held <= f.n ? `No room for a ${['first', 'second', 'third', 'fourth', 'fifth'][f.n]} today.` : ''
+  return {
+    say: `${E.baby.name} had ${naps(f.n)} on ${f.days === f.of ? 'each' : f.days} of the last ${f.of} days.`, n: f.n,
+    opts: [
+      { id: 'fewer', title: `${naps(f.n)} a day`, line: dayLine(then) },
+      { id: 'keep', title: `Keep ${naps(f.n + 1)}`, line: dayLine(now, room) },
+    ],
+  }
+}
+
 export function hero (E: Engine, g: Gate = NONE): Hero {
   const N = E.baby.name, ph = E.phase(), c = E.cur(), now = E.now
-  const h: Hero = { eyebrow: '', ask: '', hot: false, big: [], sub: '', note: '', cta: '', upForDay: false, glow: 0, run: null, caption: '', outLink: '', heading: '', buy: '', shop: trialNote(g, now), wake: null, ways: null }
+  const h: Hero = { eyebrow: '', ask: '', hot: false, big: [], sub: '', note: '', cta: '', upForDay: false, glow: 0, run: null, caption: '', outLink: '', heading: '', buy: '', shop: trialNote(g, now), wake: null, ways: null, fewer: null }
   if (ph === 'day' && E.dayStart().unknown) {
     Object.assign(h, { eyebrow: 'Today', ask: `When did ${N} wake up this morning?`, sub: isLocked(g) ? '' : 'Baby Nap Track works out the next nap from there.', cta: 'Save' })
   } else if (ph === 'day' && (g.kind === 'locked' || g.kind === 'offer')) {
@@ -91,6 +121,7 @@ export function hero (E: Engine, g: Gate = NONE): Hero {
       })
       h.note = now - lw < MIN ? 'Just woke' : `Awake ${dur(now - lw)}`
       h.ways = ways(E)
+      if (!h.ways) h.fewer = fewerNaps(E)
     }
   } else if (ph === 'nap' && c) {
     Object.assign(h, { eyebrow: 'Napping', big: runParts(now - c.s).parts, run: c.s, cta: `${N} woke up`, sub: `Fell asleep at ${fmt(c.s)}.` })
@@ -124,7 +155,7 @@ export type DaySleep = Ribbon & { so: Part[]; of: string; t0: number; t1: number
 const labelWidth = (t: string) => t.length * 2.1 + 2
 
 export function daySleep (E: Engine, g: Gate = NONE): DaySleep {
-  const N = E.baby.name, ph = E.phase(), target = E.baby.target * MIN, now = E.now, out = E.out
+  const N = E.baby.name, ph = E.phase(), target = E.aim().min * MIN, now = E.now, out = E.out
   let so: number, t0: number, t1: number, blocks: Block[], say: string
   if (ph === 'night' || ph === 'waking') {
     // The day's naps stay on the graph after bedtime, with any stretch that has none logged.
@@ -264,7 +295,7 @@ export function week (E: Engine): Week {
   const nd = night ? E.nightDay() : null
   const todayValue = nd ? nd.so : E.budget().so
   if (!days.length && !todayValue) return { empty: true }
-  const target = E.baby.target * MIN
+  const target = E.aim().min * MIN
   // At night the day just gone is the top row, and the list below it starts the day before.
   const topT = nd ? nd.t0 : E.dayStart().t
   const list = [{ label: new Date(topT).getDate() === new Date(E.now).getDate() ? 'Today' : 'Yesterday', value: todayValue, today: true }]
@@ -313,7 +344,7 @@ export function outView (E: Engine, o: Out): OutView {
   return {
     answer, rib: ribbon(ds.t, bw.c, blocks), rows,
     long: P.long ? `${N} will be awake ${dur(P.long)} by the time you're home. A nap in the car would help.` : '',
-    total: `${dur(P.total)} of day sleep on this plan. The aim is ${hours(E.baby.target * MIN)}.`,
+    total: `${dur(P.total)} of day sleep on this plan. The aim is ${hours(E.aim().min * MIN)}.`,
   }
 }
 
@@ -388,7 +419,7 @@ export { DAY }
 // The times an added nap starts with: one wake window after the last thing logged, an hour long,
 // and over by now.
 export function napDraft (baby: Baby, from: number, now: number) {
-  const b = band(ageWeeks(baby, now)), top = Math.floor(now / (5 * MIN)) * 5 * MIN
+  const b = bandFor(baby, ageWeeks(baby, now)), top = Math.floor(now / (5 * MIN)) * 5 * MIN
   let s = round5(from + b.min * MIN), e = s + 60 * MIN
   if (e > top) { e = top; s = Math.max(from, Math.min(s, e - 45 * MIN)) }
   return { s, e }
@@ -397,7 +428,7 @@ export function napDraft (baby: Baby, from: number, now: number) {
 // The nap a gap row opens: inside the stretch, one wake window in, as long as the baby's usual
 // first nap, and over a quarter of an hour before the stretch ends.
 export function gapDraft (E: Engine, a: number, z: number) {
-  const b = band(ageWeeks(E.baby, a)), len = Math.max(20, Math.min(E.napLen(0), (z - a) / MIN - b.min - 15))
+  const b = bandFor(E.baby, ageWeeks(E.baby, a)), len = Math.max(20, Math.min(E.napLen(0), (z - a) / MIN - b.min - 15))
   const s = round5(a + b.min * MIN), e = Math.min(s + len * MIN, z - 15 * MIN)
   return { s, e }
 }
@@ -467,4 +498,21 @@ export function nightSave (ln: LastNight, d: NightDraft, newId: () => string): {
   const starts = [d.down, ...d.wakes.map((x) => x.b)], ends = [...d.wakes.map((x) => x.w), d.up], at = Date.now()
   const save = starts.map((s, k): Sleep => ({ ...ln.segs[k], id: ln.segs[k]?.id ?? newId(), s, e: ends[k], kind: 'night', up: k === starts.length - 1, updatedAt: at }))
   return { save, gone: ln.segs.slice(starts.length).map((x) => x.id) }
+}
+
+/* Settings: the day sleep aim, and where it comes from. */
+export function aimNote (E: Engine): string {
+  const N = E.baby.name, a = E.aim(), most = `Most babies at ${ageText(E.baby, E.now)} sleep about ${hours(targetFor(E.age()) * MIN)} in the day.`
+  if (a.set) return `You set this. ${most}`
+  if (a.night == null) return `${most} Once 3 nights are logged, the aim moves with ${N}'s nights.`
+  return `${N} slept ${dur(a.night * MIN)} a night this week, so the aim is ${hours(a.min * MIN)}. It moves with ${N}'s nights until you change it.`
+}
+
+/* Settings: the wake window before each nap, and which ones the parent set. */
+export function windowsNote (E: Engine): string {
+  const N = E.baby.name, n = E.band().naps, set = Array.from({ length: n }, (_, k) => k).filter((k) => E.windowOf(k).set)
+  if (!set.length) return `Baby Nap Track works these out from ${N}'s age and the naps that went well this week. Change one and it stays where you put it.`
+  const which = set.map((k) => `nap ${k + 1}`), list = which.length > 1 ? `${which.slice(0, -1).join(', ')} and ${which[which.length - 1]}` : which[0]
+  const rest = set.length < n ? ` The others move with ${N}'s naps.` : ''
+  return `You set the window${set.length > 1 ? 's' : ''} before ${list}.${rest} After a nap under 40 minutes, the next nap still comes sooner.`
 }

@@ -5,7 +5,7 @@ import { Animated, Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg'
 import { askAbout, chairCard, chairChart, chairDay, chairHero, tonight, type Chair, type ChairHero, type Cry, type Why } from '../lib/chair.ts'
-import { ageLine, daySleep, hero, todayRows, week, type Ribbon as RibbonData, type Ways } from '../lib/model.ts'
+import { ageLine, daySleep, hero, todayRows, week, type Fewer, type Ribbon as RibbonData, type Ways } from '../lib/model.ts'
 import { MIN, atMins, morningAt, type Engine, type Route } from '../lib/engine.ts'
 import type { Gate } from '../lib/shop.ts'
 import { bigTime, plain, runParts } from '../lib/words.ts'
@@ -40,9 +40,11 @@ type Props = {
   onWhy: (night: string, w: Why) => void
   // After a short nap, the way the parent picks to make it up.
   onWay: (day: number, pick: Route, by: number, first: Route) => void
+  // One nap fewer a day, or keep the age's naps, from the card the log brings up.
+  onFewer: (n: number | null) => void
 }
 
-export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, onEdit, onNight, onAdd, onMorning, onWake, onGap, onOut, onType, chair, onHold, onTrip, onCry, onWhy, onWay }: Props) {
+export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, onEdit, onNight, onAdd, onMorning, onWake, onGap, onOut, onType, chair, onHold, onTrip, onCry, onWhy, onWay, onFewer }: Props) {
   const t = useTheme(), insets = useSafeAreaInsets()
   const scroll = useRef(new Animated.Value(0)).current
   const h = chairHero(E, chair, hero(E, g), E.now), unknown = E.unknownMorning()
@@ -110,6 +112,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
                 <T size={17} style={{ lineHeight: 25, maxWidth: 340 }}>{h.sub}</T>
                 {h.note ? <T size={14} color={t.muted} style={{ marginTop: 14 }}>{h.note}</T> : null}
                 {h.ways ? <WaysCard ways={h.ways} onPick={(id) => onWay(h.ways!.day, id, h.ways!.by, h.ways!.opts[0].id)} /> : null}
+                {h.fewer ? <FewerCard fewer={h.fewer} onPick={(id) => onFewer(id === 'fewer' ? h.fewer!.n : null)} /> : null}
               </>
             ) : null}
             <TimerBlock h={h} onMain={onMain} />
@@ -190,16 +193,15 @@ function Timer ({ run, caption, onPress, settling }: { run: number | null; capti
   )
 }
 
-// After a short nap: two ways to make it up, each with the next nap and tonight's bedtime. A tap
-// picks one and the day follows it.
-function WaysCard ({ ways, onPick }: { ways: Ways; onPick: (id: Route) => void }) {
+// A line, then two choices, each with what the rest of today would be. A tap picks one.
+function Choices<I extends string> ({ id, say, opts, onPick }: { id: string; say: string; opts: { id: I; title: string; line: string; on?: boolean }[]; onPick: (id: I) => void }) {
   const t = useTheme()
   return (
-    <View testID="ways" style={{ marginTop: 22 }}>
-      <T size={15} color={t.muted} style={{ lineHeight: 21, marginBottom: 10 }}>{ways.say}</T>
+    <View testID={id} style={{ marginTop: 22 }}>
+      <T size={15} color={t.muted} style={{ lineHeight: 21, marginBottom: 10 }}>{say}</T>
       <View style={{ gap: 10 }}>
-        {ways.opts.map((o) => (
-          <Pressable key={o.id} testID={`way-${o.id}`} accessibilityRole="button" accessibilityLabel={o.title} accessibilityHint={o.line} accessibilityState={{ selected: o.on }} onPress={() => onPick(o.id)}
+        {opts.map((o) => (
+          <Pressable key={o.id} testID={`${id}-${o.id}`} accessibilityRole="button" accessibilityLabel={o.title} accessibilityHint={o.line} accessibilityState={{ selected: !!o.on }} onPress={() => onPick(o.id)}
             style={({ pressed }) => ({ paddingVertical: 14, paddingHorizontal: 18, borderRadius: 18, backgroundColor: t.soft, borderWidth: 2, borderColor: o.on ? t.ink : 'transparent', opacity: pressed ? 0.8 : 1 })}>
             <T w="semibold" size={17}>{o.title}</T>
             <T size={15} color={t.muted} style={{ marginTop: 2, lineHeight: 21 }}>{o.line}</T>
@@ -209,6 +211,14 @@ function WaysCard ({ ways, onPick }: { ways: Ways; onPick: (id: Route) => void }
     </View>
   )
 }
+
+// After a short nap: two ways to make it up, each with the next nap and tonight's bedtime. A tap
+// picks one and the day follows it.
+const WaysCard = ({ ways, onPick }: { ways: Ways; onPick: (id: Route) => void }) => <Choices id="way" say={ways.say} opts={ways.opts} onPick={onPick} />
+
+// One nap fewer, when the log shows it on most of the last five days. A tap on either settles it
+// for a week, and Settings keeps the choice.
+const FewerCard = ({ fewer, onPick }: { fewer: Fewer; onPick: (id: 'fewer' | 'keep') => void }) => <Choices id="fewer" say={fewer.say} opts={fewer.opts} onPick={onPick} />
 
 // Under the timer while a nap runs late: the time to wake the baby so the naps end when the
 // parent set them to, from mock sleep-approach v3.

@@ -4,10 +4,10 @@ import * as Clipboard from 'expo-clipboard'
 import * as Linking from 'expo-linking'
 import { useEffect, useState } from 'react'
 import { Pressable, Share as ShareSheet, TextInput, View } from 'react-native'
-import { MIN, ageText, asLogged, band, dayAt, kindFor, morningAt, moveStart, pickEnd, pickStart, targetFor, type Out, type Sleep } from '../lib/engine.ts'
+import { MIN, ageText, asLogged, band, bandFor, dayAt, engine, kindFor, morningAt, moveStart, pickEnd, pickStart, type Out, type Sleep } from '../lib/engine.ts'
 import { chairEarly, chairLine } from '../lib/chair.ts'
 import { EmailSettings } from './Email.tsx'
-import { clampOut, napDraft, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outDraft, outView, savedLine, type NightDraft, type Row } from '../lib/model.ts'
+import { aimNote, clampOut, napDraft, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outDraft, outView, savedLine, windowsNote, type NightDraft, type Row } from '../lib/model.ts'
 import { typed, type TypedRow } from '../lib/typed.ts'
 import { IPHONE } from '../lib/phone.ts'
 import { ASK_COUNTS } from '../lib/posthog.ts'
@@ -51,10 +51,19 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
   useEffect(() => { if (open) { setName(baby?.name ?? ''); setDueOpen(false) } }, [open])
   if (!baby) return null
   const N = baby.name, now = st.now, shop = shopGroup(st.gate, N, now)
-  const wk = (Date.now() - new Date(baby.due || baby.born).getTime()) / (7 * 864e5), b = band(wk)
+  const wk = (Date.now() - new Date(baby.due || baby.born).getTime()) / (7 * 864e5), b = bandFor(baby, wk), ageNaps = band(wk).naps
   // The end of the day's naps, as the parent set it or bedtime less the shortest wake window.
   const napsEnd = baby.napsEnd ?? baby.bed - b.min
   const moveEnd = (d: number) => st.setBaby({ napsEnd: clamp(napsEnd + d, baby.bed - 300, baby.bed - 30) })
+  // The aim and the wake windows as the log has them now, from 1.0.23.
+  const E = engine(baby, st.state.sleeps, now), aim = E.aim()
+  const moveAim = (d: number) => st.setBaby({ target: clamp(aim.min + d, 30, 420), aimSet: true })
+  const pin = (k: number, len: number) => {
+    const w = Array.from({ length: Math.max(b.naps, baby.windows?.length ?? 0) }, (_, i) => baby.windows?.[i] ?? null)
+    w[k] = clamp(len, 30, 360)
+    st.setBaby({ windows: w })
+  }
+  const naps = (n: number) => (n === 1 ? '1 nap' : `${n} naps`)
 
   const sendLink = async () => {
     setBusy(true)
@@ -88,10 +97,28 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
       <Group title={`${N}'s day`} first>
         <Stepper label="Usual wake-up" value={timeParts(baby.wake)} onLess={() => st.setBaby({ wake: clamp(baby.wake - 15, 300, 600) })} onMore={() => st.setBaby({ wake: clamp(baby.wake + 15, 300, 600) })} />
         <Stepper label="Bedtime" value={timeParts(baby.bed)} onLess={() => st.setBaby({ bed: clamp(baby.bed - 15, 1050, 1380) })} onMore={() => st.setBaby({ bed: clamp(baby.bed + 15, 1050, 1380) })} />
-        <Stepper label="Day sleep to aim for" value={lenParts(baby.target)} onLess={() => st.setBaby({ target: clamp(baby.target - 15, 30, 420) })} onMore={() => st.setBaby({ target: clamp(baby.target + 15, 30, 420) })} />
+        <Stepper label="Day sleep to aim for" value={lenParts(aim.min)} onLess={() => moveAim(-15)} onMore={() => moveAim(15)} />
+        <Note>{aimNote(E)}</Note>
+        {aim.set ? <Link label={`Go by ${N}'s nights instead`} onPress={() => st.setBaby({ aimSet: false })} style={{ marginTop: -8 }} /> : null}
         <Stepper label="No naps after" value={timeParts(napsEnd)} onLess={() => moveEnd(-15)} onMore={() => moveEnd(15)} />
         <Note>Baby Nap Track gives you an optional time to wake {N} from a nap still going at {fmt(new Date(now).setHours(0, 0, 0, 0) + napsEnd * MIN)}. Some parents wake then to leave enough of a gap before bedtime.</Note>
-        <Note>Baby Nap Track plans the naps between wake-up and bedtime and keeps count of the day sleep. Most babies at {ageText(baby, now)} sleep about {hours(targetFor(wk) * MIN)} in the day.</Note>
+      </Group>
+
+      {/* Naps a day and the wake window before each, from 1.0.23. A window the parent sets stays put. */}
+      <Group title={`${N}'s naps`}>
+        {ageNaps >= 2 ? (
+          <>
+            <T size={14.5} color={t.muted} style={{ marginTop: 6, marginBottom: 6 }}>Naps a day</T>
+            <Segmented options={[ageNaps, ageNaps - 1].map((n) => ({ value: n, label: naps(n) }))} value={b.naps}
+              onChange={(n) => st.setBaby({ naps: n === ageNaps ? null : n, napsAsked: Date.now() })} />
+          </>
+        ) : null}
+        {Array.from({ length: b.naps }, (_, k) => {
+          const v = Math.round(E.windowOf(k).len / 5) * 5
+          return <Stepper key={k} label={`Awake before nap ${k + 1}`} value={lenParts(v)} onLess={() => pin(k, v - 15)} onMore={() => pin(k, v + 15)} />
+        })}
+        <Note>{windowsNote(E)}</Note>
+        {baby.windows?.some((x) => x != null) ? <Link label="Work them all out again" onPress={() => st.setBaby({ windows: null })} style={{ marginTop: -8 }} /> : null}
       </Group>
 
       {/* The chair method, from mock chair-method v4. Offered at every age since 1.0.18. */}
@@ -180,7 +207,7 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
       ) : null}
 
       <Group title="How the times are worked out">
-        <Note>At {ageText(baby, now)} most babies are ready for a nap after {span(b.min, b.max)} awake, and the time gets longer as the day goes on. Baby Nap Track starts with those times. Then it checks how long {N} was awake before each nap that went well this week and moves the times to fit. After a short nap, the next one comes sooner.</Note>
+        <Note>{b.naps < ageNaps ? `On ${naps(b.naps)} a day` : `At ${ageText(baby, now)}`} most babies are ready for a nap after {span(b.min, b.max)} awake, and the time gets longer as the day goes on. Baby Nap Track starts with those times. Then it checks how long {N} was awake before each nap that went well this week and moves the times to fit. After a short nap, the next one comes sooner.</Note>
         <Note>Once 3 days are logged, the times come mostly from {N}'s own sleep.</Note>
         <Note>After {fmt(new Date(now).setHours(0, 0, 0, 0) + (napsEnd - 20) * MIN)}, Baby Nap Track suggests an earlier bedtime instead of another nap.</Note>
         {/* Apple's guideline 1.4.1 asks an app about health to send people to a doctor as well.

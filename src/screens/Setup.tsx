@@ -51,11 +51,13 @@ export function Setup ({ onDone, onJoin, shopLine, askCounts, onCounts, offer, o
   const [wake, setWake] = useState(420)
   const [bed, setBed] = useState<number | null>(null)
   const [target, setTarget] = useState<number | null>(null)
+  // A day sleep aim changed here is the parent's own. Left alone, it follows the nights, from 1.0.23.
+  const [aimSet, setAimSet] = useState(false)
   const [woke, setWoke] = useState<number | null>(null)
   const [naps, setNaps] = useState<Nap[]>([])
   const [ed, setEd] = useState<{ i: number; x: Sleep } | null>(null)
 
-  const baby: Baby = { name: name.trim(), born, due: early ? due : '', wake, bed: bed ?? 1140, target: target ?? 180 }
+  const baby: Baby = { name: name.trim(), born, due: early ? due : '', wake, bed: bed ?? 1140, target: target ?? 180, ...(aimSet ? { aimSet } : {}) }
   const weeks = born ? (Date.now() - new Date((early && due) || born).getTime()) / (7 * 864e5) : 0
   // This morning's wake-up starts at the usual one, or now if that has not come yet.
   const wokeAt = woke ?? Math.min(atMins(Date.now(), wake), Math.floor(Date.now() / (5 * MIN)) * 5 * MIN)
@@ -118,7 +120,7 @@ export function Setup ({ onDone, onJoin, shopLine, askCounts, onCounts, offer, o
           <View style={{ borderTopWidth: 1, borderTopColor: t.line }}>
             <Stepper label="Usual wake-up" value={timeParts(wake)} onLess={() => setWake(clamp(wake - 15, 300, 600))} onMore={() => setWake(clamp(wake + 15, 300, 600))} />
             <Stepper label="Bedtime" value={timeParts(baby.bed)} onLess={() => setBed(clamp(baby.bed - 15, 1050, 1380))} onMore={() => setBed(clamp(baby.bed + 15, 1050, 1380))} />
-            <Stepper label="Day sleep to aim for" value={lenParts(baby.target)} onLess={() => setTarget(clamp(baby.target - 15, 30, 420))} onMore={() => setTarget(clamp(baby.target + 15, 30, 420))} />
+            <Stepper label="Day sleep to aim for" value={lenParts(baby.target)} onLess={() => { setTarget(clamp(baby.target - 15, 30, 420)); setAimSet(true) }} onMore={() => { setTarget(clamp(baby.target + 15, 30, 420)); setAimSet(true) }} />
           </View>
           <View style={{ flex: 1, minHeight: 30 }} />
           <Button label="Next" onPress={() => { setWoke(null); setStep(3) }} />

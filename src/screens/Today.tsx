@@ -30,6 +30,7 @@ type Props = {
   onWake: () => void
   onGap: (a: number, z: number) => void
   onOut: () => void
+  onType: () => void
   // The chair method, while it runs, and the link that keeps the chair where it was one more night.
   chair: Chair | null | undefined
   onHold: () => void
@@ -41,7 +42,7 @@ type Props = {
   onWay: (day: number, pick: Route, by: number, first: Route) => void
 }
 
-export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, onEdit, onNight, onAdd, onMorning, onWake, onGap, onOut, chair, onHold, onTrip, onCry, onWhy, onWay }: Props) {
+export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, onEdit, onNight, onAdd, onMorning, onWake, onGap, onOut, onType, chair, onHold, onTrip, onCry, onWhy, onWay }: Props) {
   const t = useTheme(), insets = useSafeAreaInsets()
   const scroll = useRef(new Animated.Value(0)).current
   const h = chairHero(E, chair, hero(E, g), E.now), unknown = E.unknownMorning()
@@ -90,7 +91,8 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
             {h.sub ? <T size={17} style={{ lineHeight: 25, maxWidth: 340, marginBottom: 16 }}>{h.sub}</T> : null}
             <TimeField value={wakeAt} onPick={(hh, mm) => setWake(morningAt(E.baby, E.now, hh, mm))} label="Woke up" testID="wake-time" />
             <Button label={h.cta} disabled={wakeAt > E.now} onPress={() => { onMorning(wakeAt); setWake(null) }} style={{ marginTop: 30 }} />
-            <Link center label={`${E.baby.name} is asleep now`} onPress={onMain} />
+            <Link center ink label="Type what happened" onPress={onType} />
+            <Link center label={`${E.baby.name} is asleep now`} onPress={onMain} style={{ paddingTop: 0 }} />
           </>
         ) : h.heading ? (
           <>
@@ -122,7 +124,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
         )}
 
         {unknown ? null : <DaySleepSection E={E} g={g} />}
-        {unknown ? null : <TodaySection E={E} g={g} onEdit={onEdit} onNight={onNight} onAdd={onAdd} onWake={onWake} onGap={onGap} onOut={onOut} />}
+        {unknown ? null : <TodaySection E={E} g={g} onEdit={onEdit} onNight={onNight} onAdd={onAdd} onWake={onWake} onGap={onGap} onOut={onOut} onType={onType} />}
         {chart ? <ChairChart chart={chart} ask={ask && !askTonight ? askCard : null} /> : null}
         <WeekSection E={E} />
       </Animated.ScrollView>
@@ -288,13 +290,14 @@ function Key ({ label, kind }: { label: string; kind?: 'plan' | 'out' | 'gap' })
   )
 }
 
-function TodaySection ({ E, g, onEdit, onNight, onAdd, onWake, onGap, onOut }: { E: Engine; g: Gate; onEdit: (id: string) => void; onNight: () => void; onAdd: () => void; onWake: () => void; onGap: (a: number, z: number) => void; onOut: () => void }) {
+function TodaySection ({ E, g, onEdit, onNight, onAdd, onWake, onGap, onOut, onType }: { E: Engine; g: Gate; onEdit: (id: string) => void; onNight: () => void; onAdd: () => void; onWake: () => void; onGap: (a: number, z: number) => void; onOut: () => void; onType: () => void }) {
   const { heading, rows } = todayRows(E, g)
   return (
     <View>
       <Heading>{heading}</Heading>
       <Rows rows={rows} onPress={(r) => (r.night ? onNight : r.wake ? onWake : r.gap ? () => onGap(r.gap![0], r.gap![1]) : r.out ? onOut : r.edit ? () => onEdit(r.edit!) : null)} />
       <Link center label="Add a sleep you missed" onPress={onAdd} />
+      <Link center ink label="Type what happened" onPress={onType} style={{ paddingTop: 0 }} />
     </View>
   )
 }

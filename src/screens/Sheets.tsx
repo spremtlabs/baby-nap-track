@@ -1,5 +1,5 @@
 // The panels that rise from the bottom: Settings, editing a sleep, last night, the morning
-// question, joining a shared log and deleting everything.
+// question, typing what happened, joining a shared log and deleting everything.
 import * as Clipboard from 'expo-clipboard'
 import * as Linking from 'expo-linking'
 import { useEffect, useState } from 'react'
@@ -7,7 +7,8 @@ import { Pressable, Share as ShareSheet, TextInput, View } from 'react-native'
 import { MIN, ageText, asLogged, band, dayAt, kindFor, morningAt, moveStart, pickEnd, pickStart, targetFor, type Out, type Sleep } from '../lib/engine.ts'
 import { chairEarly, chairLine } from '../lib/chair.ts'
 import { EmailSettings } from './Email.tsx'
-import { clampOut, napDraft, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outDraft, outView, savedLine, type NightDraft } from '../lib/model.ts'
+import { clampOut, napDraft, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outDraft, outView, savedLine, type NightDraft, type Row } from '../lib/model.ts'
+import { typed, type TypedRow } from '../lib/typed.ts'
 import { IPHONE } from '../lib/phone.ts'
 import { ASK_COUNTS } from '../lib/posthog.ts'
 import { shopGroup } from '../lib/shop.ts'
@@ -427,6 +428,65 @@ export function MorningSheet ({ open, mode, onClose, onToast }: { open: boolean;
             setEd({ id: `new-${now}`, s: d.s, e: d.e, kind: 'nap', up: false, updatedAt: now }); setIsNew(true)
           }} />
           <Button label={naps.length ? 'Done' : 'No naps yet'} style={{ marginTop: 18 }} onPress={() => { onClose(); onToast(savedLine(st.E, st.gate)) }} />
+        </>
+      )}
+    </Sheet>
+  )
+}
+
+// Type what happened, from mock type-what-happened v1: the parent types or says the morning, each
+// sleep it reads shows as a row to check, and Save puts them in the log in one go.
+export function TypedSheet ({ open, onClose, onToast }: { open: boolean; onClose: () => void; onToast: (s: string) => void }) {
+  const t = useTheme(), st = useStore(), baby = st.state.baby
+  const [text, setText] = useState('')
+  const [fixes, setFixes] = useState<Record<number, TypedRow | null>>({})
+  const [ed, setEd] = useState<{ i: number; p: string; x: Sleep } | null>(null)
+  const [woke, setWoke] = useState<{ i: number; p: string; t: number } | null>(null)
+  useEffect(() => { if (open) { setText(''); setFixes({}); setEd(null); setWoke(null) } }, [open])
+  if (!baby) return null
+  const now = Date.now(), r = typed(text, baby, st.state.sleeps, now, fixes)
+  const fix = (i: number, x: TypedRow | null) => setFixes({ ...fixes, [i]: x })
+  const shown = r.rows.map((x) => {
+    const row: Row = x.k === 'wake'
+      ? { at: x.t, mark: 'edge', title: 'Woke up', right: fmt(x.t) }
+      : x.e == null
+        ? { at: x.s, mark: 'done', title: kindFor(baby, x.s) === 'nap' ? 'Napping' : 'Asleep', sub: `since ${fmt(x.s)}`, right: dur(now - x.s) }
+        : { at: x.s, mark: 'done', title: kindFor(baby, x.s) === 'nap' ? 'Nap' : 'Night', sub: range(x.s, x.e, ' to '), right: dur(x.e - x.s) }
+    return { row, x }
+  })
+  const change = (x: (typeof r.rows)[number]) => (x.k === 'wake'
+    ? () => setWoke({ i: x.i, p: x.p, t: x.t })
+    : () => setEd({ i: x.i, p: x.p, x: { id: 'typed', s: x.s, e: x.e, kind: kindFor(baby, x.s), updatedAt: now } }))
+  return (
+    <Sheet open={open} onClose={onClose}>
+      {ed ? (
+        <NapForm ed={ed.x} isNew={false} onChange={(x) => setEd({ ...ed, x })}
+          onSave={() => { fix(ed.i, { k: 'sleep', s: ed.x.s, e: ed.x.e, p: ed.p }); setEd(null) }} onDelete={() => { fix(ed.i, null); setEd(null) }} />
+      ) : woke ? (
+        <>
+          <T w="bold" size={22} style={{ marginBottom: 14 }}>Woke up</T>
+          <TimeField value={woke.t} onPick={(h, m) => setWoke({ ...woke, t: morningAt(baby, now, h, m) })} label="Woke up" testID="typed-wake" />
+          <Button label="Save" disabled={woke.t > now} style={{ marginTop: 22 }} onPress={() => { fix(woke.i, { k: 'wake', t: woke.t, p: woke.p }); setWoke(null) }} />
+        </>
+      ) : (
+        <>
+          <T w="bold" size={22} style={{ marginBottom: 14 }}>Type what happened</T>
+          <TextInput testID="typed" multiline autoFocus value={text} onChangeText={(v) => { setText(v); setFixes({}) }}
+            placeholder="Up at 5:40, napped 6:10 to 7:28" placeholderTextColor={t.muted} accessibilityLabel="What happened"
+            style={{ fontFamily: 'Figtree_400Regular', fontSize: 18, lineHeight: 26, color: t.ink, backgroundColor: t.soft, borderRadius: 18, paddingVertical: 14, paddingHorizontal: 16, minHeight: 108, textAlignVertical: 'top' }} />
+          {shown.length ? (
+            <View style={{ marginTop: 20, gap: 10 }}>
+              <Eyebrow>Today</Eyebrow>
+              <Rows rows={shown.map((y) => y.row)} onPress={(row) => { const y = shown.find((z) => z.row === row); return y ? change(y.x) : null }} />
+            </View>
+          ) : <T size={14.5} color={t.muted} style={{ marginTop: 12, lineHeight: 21 }}>Each sleep shows up here as you type.</T>}
+          {r.left.length ? (
+            <View style={{ marginTop: 16, gap: 4 }}>
+              <Eyebrow>Not added</Eyebrow>
+              {r.left.map((p, i) => <T key={i} size={15} color={t.muted} style={{ lineHeight: 22 }}>{`\u201C${p}\u201D`}</T>)}
+            </View>
+          ) : null}
+          <Button label="Save" disabled={!r.rows.length} style={{ marginTop: 22 }} onPress={() => { const next = st.saveTyped(r); onClose(); onToast(savedLine(next, st.gate)) }} />
         </>
       )}
     </Sheet>

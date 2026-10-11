@@ -24,7 +24,7 @@ import { keyFrom } from './src/lib/sync.ts'
 import { ChatButton, ChatSheet, useChat } from './src/screens/Chat.tsx'
 import { ChairSheet } from './src/screens/Chair.tsx'
 import { Setup } from './src/screens/Setup.tsx'
-import { AskSheet, DeleteSheet, EditSheet, JoinSheet, MorningSheet, NightSheet, OutSheet, SettingsSheet } from './src/screens/Sheets.tsx'
+import { AskSheet, DeleteSheet, EditSheet, JoinSheet, MorningSheet, NightSheet, OutSheet, SettingsSheet, TypedSheet } from './src/screens/Sheets.tsx'
 import { Today } from './src/screens/Today.tsx'
 import { DAY_THEME, NIGHT_THEME } from './src/theme.ts'
 import { ThemeCtx, Toast } from './src/ui/kit.tsx'
@@ -43,7 +43,7 @@ export default function App () {
   )
 }
 
-type Open = null | 'settings' | 'edit' | 'ask' | 'join' | 'delete' | 'wake' | 'naps' | 'out' | 'night' | 'chair'
+type Open = null | 'settings' | 'edit' | 'ask' | 'join' | 'delete' | 'wake' | 'naps' | 'out' | 'night' | 'chair' | 'typed'
 
 function Main () {
   const st = useStore()
@@ -154,7 +154,7 @@ function Main () {
       <StatusBar style={theme.name === 'night' ? 'light' : 'dark'} />
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         {st.state.baby && E
-          ? <Today E={E} g={st.gate} onBuy={buy} onWeek={startWeek} onMain={main} onSettings={() => setOpen('settings')} onEdit={openEdit} onNight={() => setOpen('night')} onAdd={addMissed} onMorning={morning} onWake={() => setOpen('wake')} onGap={addGap} onOut={() => setOpen('out')}
+          ? <Today E={E} g={st.gate} onBuy={buy} onWeek={startWeek} onMain={main} onSettings={() => setOpen('settings')} onEdit={openEdit} onNight={() => setOpen('night')} onAdd={addMissed} onMorning={morning} onWake={() => setOpen('wake')} onGap={addGap} onOut={() => setOpen('out')} onType={() => setOpen('typed')}
               onWay={(day, pick, by, first) => st.setBaby({ route: { day, pick, by, first }, routeLikes: pick })}
               chair={E.baby.chair} onHold={() => {
                 const c = E.baby.chair
@@ -185,6 +185,7 @@ function Main () {
       <NightSheet open={open === 'night'} onClose={() => setOpen(null)} onToast={say} />
       <ChatSheet chat={chat} />
       <OutSheet open={open === 'out'} onClose={() => setOpen(null)} onToast={say} />
+      <TypedSheet open={open === 'typed'} onClose={() => setOpen(null)} onToast={say} />
       <MorningSheet open={open === 'wake' || open === 'naps'} mode={open === 'naps' ? 'naps' : 'wake'} onClose={() => setOpen(null)} onToast={say} />
       <AskSheet open={open === 'ask'} name={st.state.baby?.name ?? ''} onClose={() => setOpen(null)}
         onUp={() => { if (askId) st.endSleep(askId, true); st.refreshNow(); setOpen(null); say('Up for the day.', undefined, true) }}

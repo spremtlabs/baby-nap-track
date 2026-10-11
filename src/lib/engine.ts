@@ -519,3 +519,12 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     age: () => ageAt(now),
   }
 }
+
+// This morning's wake-up put in the log. The last stretch of the night ends then, or a mark goes in
+// when the night was not logged.
+export function withMorning (baby: Baby, log: Sleep[], at: number, t: number, id: string): { sleeps: Sleep[]; id: string } {
+  const ds = engine(baby, log, at).dayStart()
+  const up = ds.up && !ds.unknown ? ds.up : null
+  const row: Sleep = up ? { ...up, s: isMark(up) ? t : up.s, e: t, updatedAt: at } : { id, s: t, e: t, kind: 'night', up: true, updatedAt: at }
+  return { sleeps: (up ? log.map((x) => (x.id === up.id ? row : x)) : [...log, row]).sort((a, b) => a.s - b.s), id: row.id }
+}

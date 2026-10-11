@@ -43,11 +43,11 @@ export function Button ({ label, onPress, alt, disabled, style }: { label: strin
   )
 }
 
-export function Link ({ label, onPress, center, style }: { label: string; onPress: () => void; center?: boolean; style?: ViewStyle }) {
+export function Link ({ label, onPress, center, ink, style }: { label: string; onPress: () => void; center?: boolean; ink?: boolean; style?: ViewStyle }) {
   const t = useTheme()
   return (
     <Pressable accessibilityRole="button" onPress={onPress} hitSlop={8} style={[{ paddingVertical: 12, alignSelf: center ? 'center' : 'flex-start' }, style]}>
-      <T size={15} color={t.muted} style={{ textDecorationLine: 'underline', textDecorationColor: t.line }}>{label}</T>
+      <T size={15} color={ink ? t.ink : t.muted} style={{ textDecorationLine: 'underline', textDecorationColor: t.line }}>{label}</T>
     </Pressable>
   )
 }

@@ -335,6 +335,40 @@ if (PUPPETEER && !fails.length) {
     await done(p)
   }
 
+  // 11 October 2026, mock type-what-happened v1: the morning typed in one line from the question.
+  // Today's own Save sits behind the sheet, so the sheet's Save is the last one on the page.
+  {
+    const p = await open('typed', seed('tomorrow'))
+    const save = (act) => p.evaluate((act) => { const b = [...document.querySelectorAll('[role=button]')].filter((e) => e.innerText.trim() === 'Save').pop(); if (!b) return null; if (act) b.click(); return b.getAttribute('aria-disabled') === 'true' }, act)
+    await expect(p, 'When did Oisín wake up this morning?')
+    await tap(p, 'Type what happened')
+    await expect(p, 'Each sleep shows up here as you type.')
+    if ((await save(false)) !== true) fail('typed', 'Save could be tapped with nothing typed')
+    await p.type('[data-testid=typed]', 'Up at 5:40, fed at 6, napped ten past six till 7:28')
+    await expect(p, '6:10 to 7:28am')
+    await expect(p, '1 h 18 min')
+    await expect(p, 'Not added')
+    await expect(p, '“fed at 6”')
+    await look(p, 'typed')
+    // A tap on a row opens it to change.
+    await tapStart(p, 'Nap, 1 h 18 min')
+    await expect(p, 'Edit nap')
+    await setTime(p, 'woke-up', '07:30')
+    await save(true)
+    await new Promise((r) => setTimeout(r, 400))
+    await expect(p, '6:10 to 7:30am')
+    await save(true)
+    await new Promise((r) => setTimeout(r, 400))
+    await expect(p, 'Saved. Next nap')
+    await expect(p, '5:40am')
+    await expect(p, '6:10 to 7:30am')
+    await absent(p, 'fed at 6')
+    // The link under Today's list opens the same sheet for later in the day.
+    await tap(p, 'Type what happened')
+    await expect(p, 'Each sleep shows up here as you type.')
+    await done(p)
+  }
+
   // A phone set up on version 1.0.0 is asked about the morning when the update opens.
   {
     const p = await open('v1', seed('v1'))

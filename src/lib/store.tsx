@@ -4,7 +4,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Crypto from 'expo-crypto'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AppState } from 'react-native'
-import { engine, isMark, type Baby, type Out, type Sleep } from './engine.ts'
+import { engine, withMorning, type Baby, type Out, type Sleep } from './engine.ts'
+import { applyTyped, type Typed } from './typed.ts'
 import type { Chair } from './chair.ts'
 import { play, type Item, type Outcome } from './billing.ts'
 import { reminder, sleepNotice } from './model.ts'
@@ -322,11 +323,22 @@ function useStoreValue () {
     const id = newId(), at = Date.now()
     const apply = (s: Saved): Saved => {
       if (!s.baby) return s
-      const ds = engine(s.baby, s.sleeps, at).dayStart()
-      const up = ds.up && !ds.unknown ? ds.up : null
-      const row: Sleep = up ? { ...up, s: isMark(up) ? t : up.s, e: t, updatedAt: at } : { id, s: t, e: t, kind: 'night', up: true, updatedAt: at }
-      const sleeps = (up ? s.sleeps.map((x) => (x.id === up.id ? row : x)) : [...s.sleeps, row]).sort((a, b) => a.s - b.s)
-      return { ...s, sleeps, unsent: touch(s, [row.id]) }
+      const m = withMorning(s.baby, s.sleeps, at, t, id)
+      return { ...s, sleeps: m.sleeps, unsent: touch(s, [m.id]) }
+    }
+    const next = ref.current ? apply(ref.current) : null
+    update(apply)
+    return next?.baby ? engine(next.baby, next.sleeps, at) : null
+  }, [update])
+
+  // What the parent typed, put in the log in one go: the morning, the naps it replaces and each sleep.
+  const saveTyped = useCallback((r: Typed) => {
+    const at = Date.now(), pool = Array.from({ length: r.rows.length + 1 }, () => newId())
+    const apply = (s: Saved): Saved => {
+      if (!s.baby) return s
+      let i = 0
+      const x = applyTyped(s.baby, s.sleeps, at, r, () => pool[i++] ?? newId(), !!s.share)
+      return { ...s, sleeps: x.sleeps, unsent: touch(s, x.ids) }
     }
     const next = ref.current ? apply(ref.current) : null
     update(apply)
@@ -400,7 +412,7 @@ function useStoreValue () {
 
   return {
     loaded: !!state, state: state ?? EMPTY, now, E, gate: g, late, refreshNow: () => setNow(Date.now()),
-    addSleep, endSleep, saveSleep, saveNight, deleteSleep, setBaby, setChair, setup, setMorning, setOut, setAlerts, setLead, startShare, joinShare, stopShare, deleteAll, sync,
+    addSleep, endSleep, saveSleep, saveNight, saveTyped, deleteSleep, setBaby, setChair, setup, setMorning, setOut, setAlerts, setLead, startShare, joinShare, stopShare, deleteAll, sync,
     buy, restore, startWeek, setCounts, signUp,
   }
 }

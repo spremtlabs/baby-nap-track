@@ -129,12 +129,13 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
               <T size={16}>Tonight</T>
               <T w="semibold" size={16} style={{ flexShrink: 1, textAlign: 'right' }}>{chairLine(baby.chair, now)}</T>
             </View>
-            <Note>The chair moves every three nights. If {N} wakes in the night, go back to the chair.</Note>
-            <Link label="Stop the chair method" onPress={() => { st.setChair(() => null); onToast('Chair method stopped.') }} />
+            <Note>You move a bit closer to the door every three nights. If {N} wakes in the night, sit in your chair until {N}'s back asleep.</Note>
+            <Link label="How it works" onPress={onChair} />
+            <Link label="Stop the chair method" onPress={() => { st.setChair(() => null); onToast('Chair method stopped.') }} style={{ paddingTop: 0 }} />
           </>
         ) : (
           <>
-            <Note>Sit by the cot while {N} falls asleep, and move the chair closer to the door every three nights.{chairEarly(baby, now) ? ' The HSE suggests it from six months.' : ''}</Note>
+            <Note>You sit by the cot while {N} falls asleep, and move a bit closer to the door every three nights.{chairEarly(baby, now) ? ' The HSE suggests it from six months.' : ''}</Note>
             <Pill label="Start the chair method" onPress={onChair} />
           </>
         )}

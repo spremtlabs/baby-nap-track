@@ -84,6 +84,14 @@ export function fewerNaps (E: Engine): Fewer | null {
   }
 }
 
+// Tonight's bedtime, while the baby is up: the plan's own, or brought forward when the day's naps
+// ran short. Today's list and the chair method both say this one. With the nap times locked it is
+// the usual bedtime.
+export function bedTonight (E: Engine, lock = false): { at: number; early: boolean } {
+  const mk = lock ? null : E.makeUp(), pb = lock ? undefined : E.plan().find((w) => w.bed)
+  return { at: mk && mk.kind === 'late' ? mk.early : pb ? pb.c : E.budget().bedT, early: (!!mk && mk.kind === 'late') || !!pb?.early }
+}
+
 export function hero (E: Engine, g: Gate = NONE): Hero {
   const N = E.baby.name, ph = E.phase(), c = E.cur(), now = E.now
   const h: Hero = { eyebrow: '', ask: '', hot: false, big: [], sub: '', note: '', cta: '', upForDay: false, glow: 0, run: null, caption: '', outLink: '', heading: '', buy: '', shop: trialNote(g, now), wake: null, ways: null, fewer: null }
@@ -283,10 +291,8 @@ export function todayRows (E: Engine, g: Gate = NONE): { heading: string; rows: 
     }
   })
   outRows(ds.t)
-  const pb = lock ? undefined : E.plan().find((w) => w.bed)
-  const late = !!mk && mk.kind === 'late'
-  const bedAt = mk && mk.kind === 'late' ? mk.early : pb ? pb.c : B.bedT
-  rows.push({ at: Math.max(bedAt, now), mark: 'edge', title: late || pb?.early ? 'Early bedtime' : 'Bedtime', right: fmt(bedAt) })
+  const bed = bedTonight(E, lock)
+  rows.push({ at: Math.max(bed.at, now), mark: 'edge', title: bed.early ? 'Early bedtime' : 'Bedtime', right: fmt(bed.at) })
   return { heading: 'Today', rows: sorted() }
 }
 

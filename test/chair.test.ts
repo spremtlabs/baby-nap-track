@@ -1,10 +1,10 @@
 /// <reference types="node" />
 // The chair method, run against the real engine: which night it is,
-// where the chair goes, the night held back, the bedtime taps, the card and the chart.
+// where the parent sits, the night held back, the bedtime taps, the card, the chart and the sheet that starts it.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { MIN, engine } from '../src/lib/engine.ts'
-import { answer, askAbout, asleepToast, chairCard, chairChart, chairDay, chairEarly, chairHero, chairLine, chairTap, eveningOf, fellAsleep, hold, newChair, putInCot, ranges, tonight, tripsSoFar, wentOver, type Chair } from '../src/lib/chair.ts'
+import { answer, askAbout, asleepToast, chairCard, chairChart, chairDay, chairEarly, chairGuide, chairHero, chairIntro, chairLine, chairTap, eveningOf, fellAsleep, hold, newChair, putInCot, ranges, tonight, tripsSoFar, wentOver, type Chair } from '../src/lib/chair.ts'
 import { chairScene } from '../src/lib/chairArt.ts'
 import { hero } from '../src/lib/model.ts'
 import { CIAN, OISIN, at, sleep, week } from './sample.ts'
@@ -37,7 +37,7 @@ test('three nights at each place, then out of the room on night 13', () => {
   assert.deepEqual(ranges(c, 1), ['1–3', '4–6', '7–9', '10–12'])
 })
 
-test('a night held back keeps the chair where it was and moves every later night along', () => {
+test('a night held back keeps the parent where they sat and moves every later night along', () => {
   const c = plan(3, [], [0])
   const t = tonight(c, at(0, 19, 0))
   assert.equal(t.n, 4)
@@ -62,7 +62,8 @@ test('at ten weeks the bedtime tap is the baby going into the cot, with the pict
   const E = engine({ ...CIAN, chair: c }, day, now)
   assert.deepEqual(chairTap(E, c, now), { kind: 'cot' })
   assert.equal(chairHero(E, c, hero(E), now).caption, 'Tap when Cian is in the cot.')
-  assert.equal(chairCard(E, c, now)!.eyebrow, 'Chair method, night 1')
+  assert.equal(chairCard(E, c, now)!.eyebrow, 'Chair method, night 1 of 13')
+  assert.equal(chairCard(E, c, now)!.line, 'Sit right beside the cot tonight.')
 })
 
 // The evening of a day from the sample week, at 6:50pm with bedtime at 7pm.
@@ -86,8 +87,8 @@ test('at bedtime the button is the baby going into the cot, then the baby asleep
   const after = fellAsleep(inCot, at(0, 19, 16), later)
   assert.equal(after.inCot, null)
   assert.equal(after.settles.length, 4)
-  assert.equal(asleepToast('Oisín', at(0, 19, 16), later), 'Down for the night at 7:28pm. Oisín took 12 min to fall asleep. You stayed in the chair the whole time.')
-  assert.equal(asleepToast('Oisín', later - 20000, later), 'Down for the night at 7:28pm. Oisín was asleep in under a minute. You stayed in the chair the whole time.')
+  assert.equal(asleepToast('Oisín', at(0, 19, 16), later), 'Down for the night at 7:28pm. Oisín took 12 min to fall asleep. You stayed in your chair the whole time.')
+  assert.equal(asleepToast('Oisín', later - 20000, later), 'Down for the night at 7:28pm. Oisín was asleep in under a minute. You stayed in your chair the whole time.')
   // Settled tonight, so a second bedtime tap is the usual one.
   assert.equal(chairTap(engine(withChair(after), evening(), later), after, later), null)
 })
@@ -107,21 +108,37 @@ test('in the day nothing changes, and a nap still starts with the usual tap', ()
 
 test('the card at bedtime shows the night, its place and the link that holds it', () => {
   const c = plan(3), now = at(0, 18, 50), card = chairCard(engine(withChair(c), evening(), now), c, now)!
-  assert.equal(card.eyebrow, 'Chair method, night 4')
+  assert.equal(card.eyebrow, 'Chair method, night 4 of 13')
   assert.equal(card.place, 1)
+  assert.equal(card.line, "That's 3 nights done! Sit halfway to the door tonight.")
   assert.equal(card.hold, 'Stay by the cot one more night')
   const held = hold(c, card.key, true), card2 = chairCard(engine(withChair(held), evening(), now), held, now)!
   assert.equal(card2.place, 0)
-  assert.equal(card2.hold, 'Move the chair tonight')
+  assert.equal(card2.eyebrow, 'Chair method, night 4 of 14')
+  assert.equal(card2.line, 'Sit beside the cot again tonight.')
+  assert.equal(card2.hold, 'Move your chair tonight')
   // On night 5 nothing moves, so there is nothing to hold.
   const c5 = plan(4), card5 = chairCard(engine(withChair(c5), evening(), now), c5, now)!
   assert.equal(card5.hold, '')
+  assert.equal(card5.line, 'Sit halfway to the door again tonight.')
+  // Night 2 is beside the cot again, and night 13 is the one out of the room.
+  const c2 = plan(1), c13 = plan(12)
+  assert.equal(chairCard(engine(withChair(c2), evening(), now), c2, now)!.line, 'Sit beside the cot again tonight.')
+  assert.equal(chairCard(engine(withChair(c13), evening(), now), c13, now)!.line, "You've done 12 nights in the chair! Say goodnight and leave the room tonight.")
+  assert.equal(chairCard(engine(withChair(c13), evening(), now), c13, now)!.eyebrow, 'Chair method, night 13')
 })
 
-test('awake in the night, the card says to go back to the chair', () => {
+test('while the baby settles the card says what the parent can do from where they sit', () => {
+  const now = at(0, 19, 10)
+  const by = putInCot(plan(1), at(0, 19, 0)), far = putInCot(plan(3), at(0, 19, 0))
+  assert.equal(chairCard(engine(withChair(by), evening(), now), by, now)!.line, 'You can shush, or rest a hand on Oisín. Lift your hand before Oisín nods off.')
+  assert.equal(chairCard(engine(withChair(far), evening(), now), far, now)!.line, 'If Oisín gets upset, go over to pat or shush, then sit back down.')
+})
+
+test('awake in the night, the card says to sit in the chair again', () => {
   const c = plan(3), log = [...evening(), sleep(at(0, 19, 5), at(0, 23, 30), 'night')], now = at(0, 23, 40)
   const card = chairCard(engine(withChair(c), log, now), c, now)!
-  assert.equal(card.line, 'Go back to the chair until Oisín is back asleep.')
+  assert.equal(card.line, "Sit in your chair until Oisín's back asleep.")
   assert.equal(card.hold, '')
 })
 
@@ -132,12 +149,12 @@ test('the chart has a bar for each night settled, last night in honey, and says 
   assert.deepEqual(ch.groups[1].bars.map((b) => b?.min ?? null), [31, null, null])
   assert.equal(ch.groups[1].bars[0]!.last, true)
   assert.equal(ch.say[0], 'Last night Oisín fell asleep in 31 min.')
-  assert.equal(ch.say[1], "That's 15 min faster than night 1.")
+  assert.equal(ch.say[1], "That's 15 min faster than night 1!")
   assert.match(ch.say[2], /^Oisín woke twice and was back asleep in \d+ min on average\.$/)
-  assert.equal(ch.say[3], 'Tonight the chair stays halfway to the door.')
-  const say = (ago: number, extra: Partial<Chair> = {}) => { const x = { ...plan(ago, [[-1, 20]]), ...extra }; return chairChart(engine(withChair(x), week(), now), x, now)!.say }
-  assert.equal(say(5).at(-1), 'Tonight the chair stays halfway to the door.')
-  assert.equal(say(6).at(-1), 'Tonight the chair moves to the door.')
+  // Where to sit tonight is on the note at the top of Today, so the chart says it nowhere.
+  assert.equal(ch.say.length, 3)
+  const say = (ago: number) => { const x = plan(ago, [[-1, 20]]); return chairChart(engine(withChair(x), week(), now), x, now)!.say }
+  for (const ago of [5, 6, 12, 13]) assert.ok(!say(ago).some((x) => /^Tonight you|nights done/.test(x)))
   assert.equal(chairChart(engine(withChair(plan(3)), week(), now), plan(3), now), null)
 })
 
@@ -151,10 +168,10 @@ test('going over while settling is counted, and the toast and the morning say so
   assert.equal(done.settles.at(-1)!.trips, 2)
   assert.equal(done.trips, 0)
   assert.equal(asleepToast('Oisín', at(0, 19, 0), at(0, 19, 20), 2), 'Down for the night at 7:20pm. Oisín took 20 min to fall asleep. You went over twice.')
-  assert.equal(asleepToast('Oisín', at(0, 19, 0), at(0, 19, 20), 0), 'Down for the night at 7:20pm. Oisín took 20 min to fall asleep. You stayed in the chair the whole time.')
+  assert.equal(asleepToast('Oisín', at(0, 19, 0), at(0, 19, 20), 0), 'Down for the night at 7:20pm. Oisín took 20 min to fall asleep. You stayed in your chair the whole time.')
 })
 
-test('after the baby is asleep it asks about crying until it is answered, and a hard night can hold the chair', () => {
+test('after the baby is asleep it asks about crying until it is answered, and a hard night can wait one more', () => {
   const c = fellAsleep(putInCot(plan(3), at(0, 19, 0)), at(0, 19, 0), at(0, 19, 20))
   const log = [...evening(), sleep(at(0, 19, 20), null, 'night')], later = at(0, 19, 25)
   const ask = askAbout(engine(withChair(c), log, later), c, later)!
@@ -164,14 +181,27 @@ test('after the baby is asleep it asks about crying until it is answered, and a 
   // The next evening is night 5, so nothing moves; on the evening of a move night the card offers to hold.
   const hardBefore = answer(plan(3, [[-3, 46], [-2, 38], [-1, 24]]), eveningOf(at(-1, 19, 0)), { cry: 'lot' })
   const now = at(0, 18, 50), card = chairCard(engine(withChair(hardBefore), evening(), now), hardBefore, now)!
-  assert.equal(card.line, 'Last night was hard, so you can keep the chair by the cot one more night.')
+  assert.equal(card.line, "That's 3 nights done! Sit halfway to the door tonight. Last night was hard. You can stay by the cot one more night if you'd like.")
   const morning = chairChart(engine(withChair(hardBefore), week(), at(0, 11, 35)), hardBefore, at(0, 11, 35))!.say
-  assert.ok(morning.includes('There was a lot of crying. The HSE says it can take a few weeks, so keep going.'))
-  assert.equal(morning.at(-1), 'Last night was hard, so you can keep the chair by the cot one more night.')
+  assert.ok(morning.includes('There was a lot of crying. The HSE says night 3 or 4 is often harder than night 1, so keep going.'))
+  assert.equal(morning.at(-1), "Last night was hard. You can stay by the cot one more night if you'd like.")
+  // What the HSE says goes by the night: the first two, the third and fourth, and after that.
+  const lot = (ago: number) => { const x = answer(plan(ago, [[-1, 20]]), eveningOf(at(-1, 19, 0)), { cry: 'lot' }); return chairChart(engine(withChair(x), week(), at(0, 11, 35)), x, at(0, 11, 35))!.say }
+  assert.ok(lot(1).includes('There was a lot of crying. The HSE says the first few nights are hard, so keep going.'))
+  assert.ok(lot(4).includes('There was a lot of crying. The HSE says night 3 or 4 is often harder than night 1, so keep going.'))
+  assert.ok(lot(8).includes('There was a lot of crying. The HSE says it can take a few weeks, so keep going.'))
+})
+
+test('the evening night 1 is settled, the chart says well done', () => {
+  const c = fellAsleep(putInCot(plan(0), at(0, 19, 0)), at(0, 19, 0), at(0, 19, 40))
+  const log = [...evening(), sleep(at(0, 19, 40), null, 'night')], later = at(0, 19, 45)
+  const say = chairChart(engine(withChair(c), log, later), c, later)!.say
+  assert.equal(say[0], 'Tonight Oisín fell asleep in 40 min.')
+  assert.ok(say.includes("That's night 1 done. Well done!"))
 })
 
 test('a new plan starts tonight, and the picture draws every place', () => {
-  const c = newChair(at(0, 14, 0))
+  const c = newChair(engine(OISIN, week(), at(0, 14, 0)), at(0, 14, 0))
   assert.equal(tonight(c, at(0, 19, 0)).n, 1)
   for (let p = 0; p <= 4; p++) {
     const svg = chairScene(p)
@@ -181,13 +211,67 @@ test('a new plan starts tonight, and the picture draws every place', () => {
 })
 
 // The line on Today through the day, from 1.0.17.
-test('through the day Today says which night it is and where the chair goes tonight', () => {
+test('through the day Today says which night it is, where to sit tonight and when bedtime is', () => {
   const c = plan(3), E = engine(withChair(c), week(), at(0, 11, 35))
-  assert.equal(chairDay(E, c, at(0, 11, 35)), 'Chair method, night 4 of 13. The chair is halfway to the door tonight.')
+  assert.deepEqual(chairDay(E, c, at(0, 11, 35)), { head: 'Chair method, night 4 of 13', line: 'Sit halfway to the door tonight. Bedtime is 7pm.' })
   // A night held back makes the plan one night longer.
   const held = plan(3, [], [0])
-  assert.equal(chairDay(engine(withChair(held), week(), at(0, 11, 35)), held, at(0, 11, 35)), 'Chair method, night 4 of 14. The chair is beside the cot tonight.')
+  assert.deepEqual(chairDay(engine(withChair(held), week(), at(0, 11, 35)), held, at(0, 11, 35)), { head: 'Chair method, night 4 of 14', line: 'Sit beside the cot tonight. Bedtime is 7pm.' })
   const last = plan(12)
-  assert.equal(chairDay(engine(withChair(last), week(), at(0, 11, 35)), last, at(0, 11, 35)), 'Chair method, night 13. Say goodnight and leave the room tonight.')
+  assert.deepEqual(chairDay(engine(withChair(last), week(), at(0, 11, 35)), last, at(0, 11, 35)), { head: 'Chair method, night 13', line: 'Say goodnight and leave the room tonight. Bedtime is 7pm.' })
   assert.equal(chairDay(E, null, at(0, 11, 35)), null)
+})
+
+// 11 October 2026: Start closed the sheet onto Today with a toast and nothing to do next.
+test('the sheet says how it goes, and once started says well done, when bedtime is and tonight step by step', () => {
+  const now = at(0, 11, 35), E = engine(OISIN, week(), now), intro = chairIntro(E, now)
+  assert.equal(intro.cta, 'Start tonight')
+  assert.equal(intro.steps[0], "Put Oisín in the cot awake. Sit in a chair right beside the cot until Oisín's asleep.")
+  assert.equal(intro.steps.at(-1), 'On night 13 you say goodnight and leave the room.')
+  assert.deepEqual(intro.goes, ["The HSE says the first few nights are hard, and you'll start to see a change within a week or so."])
+  const c = newChair(E, now), g = chairGuide(engine(withChair(c), week(), now), c, now)
+  assert.equal(g.title, 'Well done for starting!')
+  assert.equal(g.when, 'Tonight is night 1 of 13. Bedtime is 7pm.')
+  assert.deepEqual(g.steps, ['Put a chair right beside the cot.', 'Put Oisín in the cot awake at bedtime and tap Start.', "Sit in your chair, and tap again when Oisín's asleep."])
+  assert.equal(g.cta, 'Got it')
+})
+
+test('started at bedtime, the sheet says it is bedtime now', () => {
+  const now = at(0, 18, 50), E = engine(OISIN, evening(), now), c = newChair(E, now), g = chairGuide(E, c, now)
+  assert.equal(g.when, "Tonight is night 1 of 13. It's bedtime now.")
+  assert.equal(g.steps[1], 'Put Oisín in the cot awake and tap Start.')
+})
+
+test('after a day of short naps the sheet gives the early bedtime', () => {
+  // Up at 7 and one nap of 25 minutes by 5pm: the day cannot reach its aim, so bed is half an hour early.
+  const log = [...week().slice(0, -1), sleep(at(0, 9, 0), at(0, 9, 25), 'nap')], now = at(0, 17, 0), E = engine(OISIN, log, now)
+  const c = newChair(E, now), g = chairGuide(E, c, now)
+  assert.equal(g.when, 'Tonight is night 1 of 13. Bedtime is early, so aim for 6:30pm.')
+  assert.equal(g.steps[1], 'Put Oisín in the cot awake at bedtime and tap Start.')
+  // With the nap times locked the list gives the usual bedtime, and so does the sheet.
+  assert.equal(chairGuide(E, c, now, true).when, 'Tonight is night 1 of 13. Bedtime is 7pm.')
+})
+
+test('started once the baby is down for the night, night 1 is the next bedtime', () => {
+  const log = [...evening(), sleep(at(0, 19, 5), null, 'night')]
+  // At 9pm that is tomorrow, and nothing shows at a waking tonight.
+  const late = at(0, 21, 0), E = engine(OISIN, log, late), c = newChair(E, late)
+  assert.equal(chairIntro(E, late).cta, 'Start tomorrow night')
+  assert.equal(c.from, eveningOf(at(1, 19, 0)))
+  assert.equal(chairGuide(E, c, late).when, 'Tomorrow is night 1 of 13. Bedtime is 7pm.')
+  const woke = [...evening(), sleep(at(0, 19, 5), at(0, 23, 30), 'night')], w = at(0, 23, 40)
+  assert.equal(chairCard(engine(withChair(c), woke, w), c, w), null)
+  // At 2am the next bedtime is this evening, so the button says tonight.
+  const small = at(1, 2, 0), E2 = engine(OISIN, log, small), c2 = newChair(E2, small)
+  assert.equal(chairIntro(E2, small).cta, 'Start tonight')
+  assert.equal(c2.from, eveningOf(at(1, 19, 0)))
+  assert.equal(chairGuide(E2, c2, small).when, 'Tonight is night 1 of 13. Bedtime is 7pm.')
+  // The next evening the plan is on night 1 with its card.
+  const next = at(1, 18, 50), day = [...evening(), sleep(at(0, 19, 5), at(1, 7, 0), 'night', true), sleep(at(1, 12, 20), at(1, 13, 30), 'nap'), sleep(at(1, 15, 50), at(1, 16, 40), 'nap')]
+  assert.equal(chairCard(engine(withChair(c), day, next), c, next)!.eyebrow, 'Chair method, night 1 of 13')
+})
+
+test('started before 6am with the baby up for the day, night 1 is this evening', () => {
+  const log = [...week().slice(0, -1), sleep(at(-1, 19, 0), at(0, 5, 10), 'night', true)], now = at(0, 5, 30), E = engine(OISIN, log, now)
+  assert.equal(newChair(E, now).from, eveningOf(at(0, 19, 0)))
 })

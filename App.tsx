@@ -10,7 +10,7 @@ import * as SystemUI from 'expo-system-ui'
 import { useEffect, useRef, useState } from 'react'
 import { AppState, View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { answer, asleepToast, chairTap, fellAsleep, hold, newChair, putInCot, tonight, wentOver } from './src/lib/chair.ts'
+import { answer, asleepToast, chairGuide, chairIntro, chairTap, fellAsleep, hold, newChair, putInCot, tonight, wentOver } from './src/lib/chair.ts'
 import { engine, kindFor, withNoNap, type Sleep } from './src/lib/engine.ts'
 import { gapDraft, mainAction, savedLine } from './src/lib/model.ts'
 import { fmt } from './src/lib/words.ts'
@@ -18,7 +18,7 @@ import { askToRemind } from './src/lib/notify.ts'
 import { offerUpdate } from './src/lib/update.ts'
 import { IPHONE } from './src/lib/phone.ts'
 import { ASK_COUNTS } from './src/lib/posthog.ts'
-import { outcomeLine, setupLine, weekLine, type Store } from './src/lib/shop.ts'
+import { isLocked, outcomeLine, setupLine, weekLine, type Store } from './src/lib/shop.ts'
 import { StoreProvider, useStore } from './src/lib/store.tsx'
 import { keyFrom } from './src/lib/sync.ts'
 import { ChatButton, ChatNote, ChatSheet, useChat } from './src/screens/Chat.tsx'
@@ -43,7 +43,8 @@ export default function App () {
   )
 }
 
-type Open = null | 'settings' | 'edit' | 'ask' | 'join' | 'delete' | 'wake' | 'naps' | 'out' | 'night' | 'chair' | 'typed'
+// `chair` is the sheet that explains the chair method, and `chair-on` the same sheet once it has started.
+type Open = null | 'settings' | 'edit' | 'ask' | 'join' | 'delete' | 'wake' | 'naps' | 'out' | 'night' | 'chair' | 'chair-on' | 'typed'
 
 function Main () {
   const st = useStore()
@@ -172,8 +173,8 @@ function Main () {
                 const c = E.baby.chair
                 if (!c) return
                 const t = tonight(c, Date.now())
+                // The card changes under the tap: the picture, the line and the link.
                 st.setChair((x) => (x ? hold(x, t.key, !t.held) : x))
-                say(t.held ? 'The chair moves tonight.' : 'The chair stays put tonight.')
               }}
               onTrip={() => st.setChair((c) => (c ? wentOver(c) : c))}
               onCry={(night, cry) => { st.setChair((c) => (c ? answer(c, night, { cry }) : c)); say('Saved.') }}
@@ -192,8 +193,12 @@ function Main () {
 
       <SettingsSheet open={open === 'settings'} onClose={() => setOpen(null)} onToast={say} onChair={() => setOpen('chair')}
         onJoin={() => { setJoinText(''); setOpen('join') }} onDelete={() => setOpen('delete')} onBuy={buy} onWeek={startWeek} onRestore={restore} />
-      <ChairSheet open={open === 'chair'} name={st.state.baby?.name ?? ''} onClose={() => setOpen('settings')}
-        onStart={() => { st.setChair(() => newChair(Date.now())); setOpen(null); say('The chair method starts tonight.') }} />
+      {/* 11 October 2026: Start closed the sheet onto Today with a toast and nothing to do next. It
+          now stays open on what to do tonight and when. */}
+      <ChairSheet open={open === 'chair' || open === 'chair-on'} intro={E ? chairIntro(E, E.now) : null} running={!!E?.baby.chair}
+        guide={open === 'chair-on' && E?.baby.chair ? chairGuide(E, E.baby.chair, E.now, isLocked(st.gate)) : null}
+        onClose={() => setOpen('settings')} onDone={() => setOpen(null)}
+        onStart={() => { if (!E) return; const now = Date.now(); st.setChair(() => newChair(engine(E.baby, st.state.sleeps, now, st.state.out), now)); setOpen('chair-on') }} />
       <EditSheet open={open === 'edit'} sleep={editing} onClose={() => setOpen(null)} onToast={say} />
       <NightSheet open={open === 'night'} onClose={() => setOpen(null)} onToast={say} />
       <ChatSheet chat={chat} />

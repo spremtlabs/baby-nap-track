@@ -1,9 +1,11 @@
 // The chair method, a gradual retreat: the parent sits by the cot until the baby is
-// asleep, and every three nights the chair moves closer to the door. The plan rides on the baby's details, so a shared log
+// asleep, and every three nights sits closer to the door. The plan rides on the baby's details, so a shared log
 // carries it to every phone. Nothing in here draws or stores anything.
+// 11 October 2026: every line is said to the parent, who does the sitting and the moving. The chair
+// is never the subject of a sentence, and the gate reads the source for it.
 import { DAY, HOUR, MIN, ageWeeks, type Baby, type Engine } from './engine.ts'
-import { mainAction, type Hero } from './model.ts'
-import { dur, fmt, times } from './words.ts'
+import { bedTonight, mainAction, type Hero } from './model.ts'
+import { dur, fmt, fmtMins, times } from './words.ts'
 
 // One night's settling: when the baby went into the cot and fell asleep, how many times the
 // parent went over to pat or shush, how much crying there was, and anything that made it harder.
@@ -11,17 +13,16 @@ export type Cry = 'none' | 'some' | 'lot'
 export type Why = 'unwell' | 'teething' | 'away'
 export type Settle = { night: string; inCot: number; asleep: number; trips?: number; cry?: Cry; why?: Why[] }
 
-// `from` is the evening of night 1. `held` holds the evenings the parent kept the chair where it
-// was for one more night. `inCot` and `trips` are set while the baby is settling.
+// `from` is the evening of night 1. `held` holds the evenings the parent stayed where they were
+// for one more night. `inCot` and `trips` are set while the baby is settling.
 export type Chair = { from: string; held: string[]; settles: Settle[]; inCot: number | null; trips?: number }
 
 export const CRY: { value: Cry; label: string }[] = [{ value: 'none', label: 'None' }, { value: 'some', label: 'Some' }, { value: 'lot', label: 'A lot' }]
 export const WHY: { value: Why; label: string }[] = [{ value: 'unwell', label: 'Unwell' }, { value: 'teething', label: 'Teething' }, { value: 'away', label: 'Away from home' }]
 
-// Where the chair goes, in order. The fifth is the night the parent says goodnight and leaves.
+// Where the parent sits, in order. The fifth is the night the parent says goodnight and leaves.
 export const PLACES = ['beside the cot', 'halfway to the door', 'by the door', 'in the hall', 'out of the room']
 const STAY = ['by the cot', 'halfway to the door', 'by the door', 'in the hall']
-const MOVE_TO = ['beside the cot', 'halfway to the door', 'to the door', 'into the hall']
 const NIGHTS_AT = 3
 
 // Settings offers it at every age since 1.0.18, and tells a parent whose baby is under six months
@@ -37,10 +38,18 @@ const dayNo = (key: string) => { const [y, m, d] = key.split('-').map(Number); r
 const keyOf = (c: Chair, n: number) => { const d = new Date((dayNo(c.from) + n - 1) * DAY); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}` }
 export const nightOf = (c: Chair, key: string) => Math.max(1, dayNo(key) - dayNo(c.from) + 1)
 
-export const newChair = (now: number): Chair => ({ from: eveningOf(now), held: [], settles: [], inCot: null })
+// Night 1 is the coming bedtime: this evening while the baby is up, and the next one once the baby
+// is down for the night. Before 6am with the baby up for the day, it is still this evening.
+const down = (E: Engine) => { const ph = E.phase(); return ph === 'night' || ph === 'waking' }
+export const newChair = (E: Engine, now: number): Chair =>
+  ({ from: down(E) ? eveningOf(E.nightSegs()[0].s + DAY) : eveningOf(Math.max(now, E.dayStart().t + 6 * HOUR)), held: [], settles: [], inCot: null })
+// A plan started after bedtime has nothing to show until its first evening.
+const begun = (c: Chair, now: number) => dayNo(eveningOf(now)) >= dayNo(c.from)
+// Night 1 is tonight when it falls on today's date or earlier, and tomorrow when it is the next one.
+const startsTonight = (c: Chair, now: number) => dayNo(c.from) <= dayNo(ymd(new Date(now)))
 
 // Night by night: three nights at each place, one more for each night the parent held, and from
-// the fifth place on the parent is out of the room. `move` is a night the chair would move on.
+// the fifth place on the parent is out of the room. `move` is a night the parent would move on.
 type Night = { n: number; key: string; place: number; move: boolean }
 function nights (c: Chair, upTo: number): Night[] {
   const out: Night[] = []
@@ -64,6 +73,9 @@ export function ranges (c: Chair, n: number): string[] {
   return out
 }
 
+// The night the parent leaves the room, with any nights held back counted in.
+const leaveNight = (c: Chair, n: number) => nights(c, n + 4 * NIGHTS_AT + 4).find((x) => x.place === 4)?.n
+
 export type Tonight = { key: string; n: number; place: number; move: boolean; held: boolean; settled: boolean; ranges: string[] }
 
 export function tonight (c: Chair, now: number): Tonight {
@@ -77,7 +89,7 @@ export const settling = (E: Engine, c: Chair | null | undefined, now: number): c
 
 // The bedtime tap is the baby going into the cot, while tonight has no settling logged.
 export function cotTap (E: Engine, c: Chair | null | undefined, now: number) {
-  if (!c || settling(E, c, now) || E.unknownMorning()) return false
+  if (!c || !begun(c, now) || settling(E, c, now) || E.unknownMorning()) return false
   const a = mainAction(E)
   return a.kind === 'add' && a.sleep.kind === 'night' && !a.back && !tonight(c, now).settled
 }
@@ -96,7 +108,7 @@ export const fellAsleep = (c: Chair, inCot: number, now: number): Chair => {
   const night = eveningOf(inCot)
   return { ...c, inCot: null, trips: 0, settles: [...c.settles.filter((s) => s.night !== night), { night, inCot, asleep: now, trips: c.trips ?? 0 }] }
 }
-const tripLine = (n: number) => (n ? `You went over ${times(n)}.` : 'You stayed in the chair the whole time.')
+const tripLine = (n: number) => (n ? `You went over ${times(n)}.` : 'You stayed in your chair the whole time.')
 export const asleepToast = (N: string, inCot: number, now: number, trips = 0) =>
   `Down for the night at ${fmt(now)}. ${now - inCot < MIN ? `${N} was asleep in under a minute.` : `${N} took ${dur(now - inCot)} to fall asleep.`} ${tripLine(trips)}`
 export const tripsSoFar = (n: number) => (n ? `${times(n).replace(/^./, (x) => x.toUpperCase())} so far` : 'Not yet')
@@ -118,6 +130,52 @@ const latest = (c: Chair) => [...c.settles].sort((a, b) => b.asleep - a.asleep)[
 // A move night can wait one more night, so a place can have three or four nights.
 export const hold = (c: Chair, key: string, on: boolean): Chair => ({ ...c, held: on ? [...new Set([...c.held, key])] : c.held.filter((k) => k !== key) })
 
+// The sheet Settings opens: the plan in five lines, what the HSE says about how it goes, and the
+// button that starts it. The steps are the ones the app has given since 1.0.11.
+export type Intro = { steps: string[]; goes: string[]; cta: string }
+export function chairIntro (E: Engine, now: number): Intro {
+  const N = E.baby.name
+  return {
+    steps: [
+      `Put ${N} in the cot awake. Sit in a chair right beside the cot until ${N}'s asleep.`,
+      `You can shush, or rest a hand on ${N}. Lift your hand before ${N} nods off.`,
+      `Every three nights you move your chair a bit closer to the door. If ${N} gets upset, go over to pat or shush, then sit back down.`,
+      `If ${N} wakes in the night, sit in your chair until ${N}'s back asleep.`,
+      'On night 13 you say goodnight and leave the room.',
+    ],
+    // 11 October 2026: the line carries the name of who says it. No success rate is given, because
+    // no trial tests this plan by itself.
+    goes: ["The HSE says the first few nights are hard, and you'll start to see a change within a week or so."],
+    cta: startsTonight(newChair(E, now), now) ? 'Start tonight' : 'Start tomorrow night',
+  }
+}
+
+// The same sheet once the plan is on: well done, when bedtime is, and the first night in three steps.
+// What the parent can do from the chair is on the card at bedtime, where it applies.
+// Bedtime is the one Today's list gives, so a bedtime brought forward after short naps is said as early.
+export type Guide = { title: string; when: string; steps: string[]; after: string; cta: string }
+export function chairGuide (E: Engine, c: Chair, now: number, lock = false): Guide {
+  const N = E.baby.name, last = leaveNight(c, 1)
+  // The time is said once, in the line under the heading.
+  let bed = `Bedtime is ${fmtMins(E.baby.bed)}.`, at = ' at bedtime'
+  if (!down(E)) {
+    const b = bedTonight(E, lock)
+    if (now >= b.at - 15 * MIN) { bed = "It's bedtime now."; at = '' }
+    else bed = b.early ? `Bedtime is early, so aim for ${fmt(b.at)}.` : `Bedtime is ${fmt(b.at)}.`
+  }
+  return {
+    title: 'Well done for starting!',
+    when: `${startsTonight(c, now) ? 'Tonight' : 'Tomorrow'} is night 1${last ? ` of ${last}` : ''}. ${bed}`,
+    steps: [
+      'Put a chair right beside the cot.',
+      `Put ${N} in the cot awake${at} and tap Start.`,
+      `Sit in your chair, and tap again when ${N}'s asleep.`,
+    ],
+    after: "We'll tell you where to sit each night.",
+    cta: 'Got it',
+  }
+}
+
 // The Today screen while the plan runs: settling has its own count, and at bedtime the button
 // is the baby going into the cot.
 export type ChairHero = Hero & { settling?: boolean; trips?: number }
@@ -129,37 +187,52 @@ export function chairHero (E: Engine, c: Chair | null | undefined, h: Hero, now:
   return h
 }
 
-// The line on Today through the day while the plan runs: which night it is, of how many, and where
-// the chair goes tonight. It gives way to the picture at bedtime.
-export function chairDay (E: Engine, c: Chair | null | undefined, now: number): string | null {
+// The note on Today through the day while the plan runs: which night it is, of how many, where
+// to sit tonight and when bedtime is. It gives way to the picture at bedtime.
+export type DayNote = { head: string; line: string }
+export function chairDay (E: Engine, c: Chair | null | undefined, now: number, lock = false): DayNote | null {
   const ph = E.phase()
   if (!c || (ph !== 'day' && ph !== 'nap') || E.unknownMorning() || chairCard(E, c, now)) return null
-  const t = tonight(c, now), last = nights(c, t.n + 4 * NIGHTS_AT + 4).find((x) => x.place === 4)
-  if (t.place === 4) return `Chair method, night ${t.n}. Say goodnight and leave the room tonight.`
-  return `Chair method, night ${t.n}${last ? ` of ${last.n}` : ''}. The chair is ${PLACES[t.place]} tonight.`
+  const t = tonight(c, now), last = leaveNight(c, t.n), bed = `Bedtime is ${fmt(bedTonight(E, lock).at)}.`
+  if (t.place === 4) return { head: `Chair method, night ${t.n}`, line: `Say goodnight and leave the room tonight. ${bed}` }
+  return { head: `Chair method, night ${t.n}${last ? ` of ${last}` : ''}`, line: `Sit ${PLACES[t.place]} tonight. ${bed}` }
 }
+
+// What the card says at bedtime, before the baby goes into the cot: where to sit, and well done
+// on the nights that finish a place.
+function sitLine (t: Tonight) {
+  if (t.n === 1) return 'Sit right beside the cot tonight.'
+  if (t.move && !t.held) return `That's ${t.n - 1} nights done! Sit ${PLACES[t.place]} tonight.`
+  return `Sit ${PLACES[t.place]} again tonight.`
+}
+// And while the baby settles: what the parent can do from where they sit.
+const settleLine = (t: Tonight, N: string) =>
+  (t.place === 0 ? `You can shush, or rest a hand on ${N}. Lift your hand before ${N} nods off.` : `If ${N} gets upset, go over to pat or shush, then sit back down.`)
 
 // The picture on Today: at bedtime, while settling, and when the baby wakes in the night.
 export type Card = { eyebrow: string; place: number; done: number; ranges: string[]; hold: string; held: boolean; line: string; key: string }
 export function chairCard (E: Engine, c: Chair | null | undefined, now: number): Card | null {
-  if (!c) return null
+  if (!c || !begun(c, now)) return null
   const ph = E.phase(), live = settling(E, c, now), at = cotTap(E, c, now)
   if (!live && !at && ph !== 'waking') return null
-  const t = tonight(c, now), N = E.baby.name
+  const t = tonight(c, now), N = E.baby.name, last = leaveNight(c, t.n)
   const canHold = t.move && !t.settled && !live && ph === 'day'
   const prev = Math.max(0, t.held ? t.place : t.place - 1)
-  // A hard night before a move night: the chair can stay where it is, and the link is right below.
-  const easy = canHold && !t.held && hard(latest(c)) ? `Last night was hard, so you can keep the chair ${STAY[prev]} one more night.` : ''
+  // A hard night before a move night: the parent can stay put, and the link is right below.
+  const easy = canHold && !t.held && hard(latest(c)) ? ` Last night was hard. You can stay ${STAY[prev]} one more night if you'd like.` : ''
+  const leave = at && t.move ? `You've done ${t.n - 1} nights in the chair! Say goodnight and leave the room tonight.` : 'Say goodnight and leave the room.'
   return {
-    eyebrow: `Chair method, night ${t.n}`,
+    eyebrow: `Chair method, night ${t.n}${last && t.place < 4 ? ` of ${last}` : ''}`,
     place: t.place, done: t.place, ranges: t.ranges, key: t.key, held: t.held,
-    hold: canHold ? (t.held ? 'Move the chair tonight' : `Stay ${STAY[prev]} one more night`) : '',
-    line: t.place === 4 ? 'Say goodnight and leave the room.' : ph === 'waking' ? `Go back to the chair until ${N} is back asleep.` : easy,
+    hold: canHold ? (t.held ? 'Move your chair tonight' : `Stay ${STAY[prev]} one more night`) : '',
+    line: t.place === 4 ? leave : ph === 'waking' ? `Sit in your chair until ${N}'s back asleep.` : live ? settleLine(t, N) : sitLine(t) + easy,
   }
 }
 
 // The chart under Today's list: minutes to fall asleep, one bar a night, grouped by place. Under
-// it, what the last settling and the night said, and where the chair goes tonight.
+// it, what the last settling and the night said. Where to sit tonight is on the note at the top of
+// Today and on the card at bedtime, so the chart leaves it out. After a lot of crying the line
+// goes by the night: the first two, the third and fourth, and the ones after.
 export type Chart = { groups: { label: string; bars: ({ min: number; last: boolean } | null)[] }[]; max: number; say: string[] }
 export function chairChart (E: Engine, c: Chair | null | undefined, now: number): Chart | null {
   if (!c || !c.settles.length) return null
@@ -176,30 +249,27 @@ export function chairChart (E: Engine, c: Chair | null | undefined, now: number)
   const N = E.baby.name, say: string[] = []
   // The settling just gone, against night 1.
   if (now - last.asleep < 20 * HOUR) {
-    const when = last.night === t.key ? 'Tonight' : 'Last night', ms = last.asleep - last.inCot, first = byNight.get(plan[0].key)
+    const same = last.night === t.key, when = same ? 'Tonight' : 'Last night', ms = last.asleep - last.inCot, first = byNight.get(plan[0].key), ln = nightOf(c, last.night)
     say.push(ms < MIN ? `${when} ${N} was asleep in under a minute.` : `${when} ${N} fell asleep in ${dur(ms)}.`)
-    if (first && first !== last && first.asleep - first.inCot - ms >= 2 * MIN) say.push(`That's ${dur(first.asleep - first.inCot - ms)} faster than night 1.`)
+    if (first && first !== last && first.asleep - first.inCot - ms >= 2 * MIN) say.push(`That's ${dur(first.asleep - first.inCot - ms)} faster than night 1!`)
     if (last.trips != null) say.push(tripLine(last.trips))
     if (last.cry === 'none') say.push('There was no crying.')
     if (last.cry === 'some') say.push('There was some crying.')
-    if (last.cry === 'lot') say.push("There was a lot of crying. The HSE says it can take a few weeks, so keep going.")
+    if (last.cry === 'lot') say.push(`There was a lot of crying. The HSE says ${ln <= 2 ? 'the first few nights are hard' : ln <= 4 ? 'night 3 or 4 is often harder than night 1' : 'it can take a few weeks'}, so keep going.`)
+    if (same && ln === 1) say.push("That's night 1 done. Well done!")
   }
   // The night, from the log: the wakings and how long the baby took to go back to sleep.
   const ln = E.lastNight()
   if (ln && ln.logged) {
     const gaps = ln.segs.slice(1).map((x, k) => x.s - ln.segs[k].e!)
-    if (!gaps.length) say.push(`${N} slept through the night.`)
+    if (!gaps.length) say.push(`${N} slept through the night!`)
     else {
       const avg = gaps.reduce((a, x) => a + x, 0) / gaps.length
       say.push(gaps.length === 1 ? `${N} woke once and was back asleep in ${dur(avg)}.` : `${N} woke ${times(gaps.length)} and was back asleep in ${dur(avg)} on average.`)
     }
   }
-  if (t.key !== last.night || t.place === 4) {
-    say.push(t.place === 4
-      ? 'Tonight you say goodnight and leave the room.'
-      : t.n === 1 ? `Tonight the chair goes ${PLACES[0]}.` : t.move && !t.held ? `Tonight the chair moves ${MOVE_TO[t.place]}.` : `Tonight the chair stays ${PLACES[t.place]}.`)
-    if (t.move && !t.held && t.place < 4 && hard(last)) say.push(`Last night was hard, so you can keep the chair ${STAY[t.place - 1]} one more night.`)
-  }
+  // A hard night before a move night: the card at bedtime has the link that keeps the parent in place.
+  if (t.key !== last.night && t.move && !t.held && t.place < 4 && hard(last)) say.push(`Last night was hard. You can stay ${STAY[t.place - 1]} one more night if you'd like.`)
   return { groups, max, say }
 }
 

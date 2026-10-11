@@ -6,7 +6,7 @@ import { AT_FIVE_MONTHS, CIAN, OISIN, at, sleep, week } from '../test/sample.ts'
 
 export const STORE_KEY = 'snug.state.v1'
 
-export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'short-last' | 'young' | 'fewer' | 'typed-evening' | 'early-bed' | 'back-asleep'): { state: string; now: number } {
+export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'short-last' | 'young' | 'fewer' | 'typed-evening' | 'early-bed' | 'back-asleep' | 'chair-eve'): { state: string; now: number } {
   // 11 October 2026 at 6pm, at five months: a night with a waking from 5 to 6am, three short naps,
   // and the screen giving an early bedtime of 6:30pm. From 1.0.28 a tap on the timer then is the
   // night. Up to 1.0.27 it was read against the short nap the plan held for 4:45pm.
@@ -53,6 +53,11 @@ export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1
   if (scenario === 'short-nap') {
     const sleeps = [...week().slice(0, -1), sleep(at(0, 8, 58), at(0, 9, 25), 'nap')]
     return { state: JSON.stringify({ baby: OISIN, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 9, 40) }
+  }
+  // 6:50pm with bedtime at 7 and two naps had, before the chair method is started.
+  if (scenario === 'chair-eve') {
+    const sleeps = [...week(), sleep(at(0, 12, 20), at(0, 13, 30), 'nap'), sleep(at(0, 15, 50), at(0, 16, 40), 'nap')]
+    return { state: JSON.stringify({ baby: OISIN, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 18, 50) }
   }
   // The chair method. Night 4 at 6:50pm with bedtime at 7, three nights
   // settled beside the cot; or the morning after night 4, with four nights settled.

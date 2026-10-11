@@ -7,12 +7,12 @@ import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-nativ
 import { askAbout, chairCard, chairChart, chairDay, chairHero, tonight, type Chair, type ChairHero, type Cry, type Why } from '../lib/chair.ts'
 import { ageLine, daySleep, hero, todayRows, week, type Fewer, type Ribbon as RibbonData, type Ways } from '../lib/model.ts'
 import { MIN, atMins, morningAt, type Engine, type Route } from '../lib/engine.ts'
-import type { Gate } from '../lib/shop.ts'
+import { isLocked, type Gate } from '../lib/shop.ts'
 import { bigTime, plain, runParts } from '../lib/words.ts'
 import { F } from '../theme.ts'
 import { TimeField } from '../ui/TimeField.tsx'
 import { Big, Button, Eyebrow, Link, T, useTheme } from '../ui/kit.tsx'
-import { AskCard, ChairCard, ChairChart, TripsRow } from './Chair.tsx'
+import { AskCard, ChairCard, ChairChart, ChairNote, TripsRow } from './Chair.tsx'
 
 type Props = {
   E: Engine
@@ -33,7 +33,7 @@ type Props = {
   onNoNap: (a: number, z: number) => void
   onOut: () => void
   onType: () => void
-  // The chair method, while it runs, and the link that keeps the chair where it was one more night.
+  // The chair method, while it runs, and the link that keeps the parent where they sat one more night.
   chair: Chair | null | undefined
   onHold: () => void
   // While settling, each time the parent goes over; after it, the crying and anything that made it harder.
@@ -50,7 +50,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
   const t = useTheme(), insets = useSafeAreaInsets()
   const scroll = useRef(new Animated.Value(0)).current
   const h = chairHero(E, chair, hero(E, g), E.now), unknown = E.unknownMorning()
-  const card = chairCard(E, chair, E.now), chart = unknown ? null : chairChart(E, chair, E.now), chairLine = chairDay(E, chair, E.now)
+  const card = chairCard(E, chair, E.now), chart = unknown ? null : chairChart(E, chair, E.now), chairNote = chairDay(E, chair, E.now, isLocked(g))
   // Tonight's question sits under the timer; last night's waits in the chart in the morning.
   const ask = askAbout(E, chair, E.now), askTonight = !!ask && !!chair && ask.night === tonight(chair, E.now).key
   const askCard = ask ? <AskCard ask={ask} onCry={(c) => onCry(ask.night, c)} onWhy={(w) => onWhy(ask.night, w)} /> : null
@@ -87,7 +87,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
           <Pressable accessibilityRole="button" onPress={onSettings} hitSlop={12}><T size={15} color={t.muted}>Settings</T></Pressable>
         </View>
 
-        {chairLine ? <View testID="chair-day" style={{ marginTop: -14, marginBottom: 22 }}><T size={14} color={t.muted} style={{ lineHeight: 20 }}>{chairLine}</T></View> : null}
+        {chairNote ? <ChairNote note={chairNote} /> : null}
         <Eyebrow hot={h.hot}>{h.eyebrow}</Eyebrow>
         {h.ask ? (
           <>

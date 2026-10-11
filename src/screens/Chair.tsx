@@ -1,9 +1,9 @@
-// The chair method on screen: the picture with the nights under it, the
-// card on Today at bedtime, the chart under Today's list, and the sheet that starts it.
+// The chair method on screen: the picture with the nights under it, the note on Today through
+// the day, the card at bedtime, the chart under Today's list, and the sheet that starts it.
 import { useState } from 'react'
 import { Pressable, View } from 'react-native'
 import { SvgXml } from 'react-native-svg'
-import { CRY, WHY, tripsSoFar, type Ask, type Card, type Chart, type Cry, type Why } from '../lib/chair.ts'
+import { CRY, WHY, tripsSoFar, type Ask, type Card, type Chart, type Cry, type DayNote, type Guide, type Intro, type Why } from '../lib/chair.ts'
 import { SCENE_STOPS, chairScene } from '../lib/chairArt.ts'
 import { Button, Eyebrow, Link, Sheet, T, useTheme } from '../ui/kit.tsx'
 
@@ -32,6 +32,17 @@ export function ChairPicture ({ place, done, ranges }: { place: number; done: nu
   )
 }
 
+// On Today through the day: which night it is, where to sit tonight and when bedtime is.
+export function ChairNote ({ note }: { note: DayNote }) {
+  const t = useTheme()
+  return (
+    <View testID="chair-day" style={{ marginTop: -12, marginBottom: 26, backgroundColor: t.soft, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 16, gap: 3 }}>
+      <Eyebrow>{note.head}</Eyebrow>
+      <T size={15.5} style={{ lineHeight: 22 }}>{note.line}</T>
+    </View>
+  )
+}
+
 // On Today at bedtime, while settling, and when the baby wakes in the night.
 export function ChairCard ({ card, onHold }: { card: Card; onHold: () => void }) {
   const t = useTheme()
@@ -49,7 +60,7 @@ export function ChairCard ({ card, onHold }: { card: Card; onHold: () => void })
   )
 }
 
-// Minutes to fall asleep, one bar a night, in the four places the chair goes. Last night's is honey.
+// Minutes to fall asleep, one bar a night, in the four places the parent sits. Last night's is honey.
 export function ChairChart ({ chart, ask }: { chart: Chart; ask?: React.ReactNode }) {
   const t = useTheme(), top = 92
   return (
@@ -128,23 +139,49 @@ export function AskCard ({ ask, onCry, onWhy }: { ask: Ask; onCry: (c: Cry) => v
   )
 }
 
-// The sheet Settings opens to start the plan.
-export function ChairSheet ({ open, name, onClose, onStart }: { open: boolean; name: string; onClose: () => void; onStart: () => void }) {
-  const N = name
+// The sheet Settings opens: how the plan goes, what to expect and the button that starts it. Once
+// the plan is on it says well done, when bedtime is and the first night step by step, and its
+// button goes back to Today. The button stays at the bottom of the sheet while the words scroll.
+// Opened again from Settings while the plan runs, it has no button.
+export function ChairSheet ({ open, intro, guide, running, onClose, onStart, onDone }: { open: boolean; intro: Intro | null; guide: Guide | null; running: boolean; onClose: () => void; onStart: () => void; onDone: () => void }) {
+  const t = useTheme()
+  if (!intro) return null
+  const first = ['1–3', '4–6', '7–9', '10–12']
+  if (guide) {
+    return (
+      <Sheet key="on" open={open} onClose={onDone} tall foot={<Button label={guide.cta} onPress={onDone} />}>
+        <View testID="chair-guide">
+          <T w="bold" size={24} style={{ lineHeight: 30, marginBottom: 6 }}>{guide.title}</T>
+          <T w="semibold" size={17.5} style={{ lineHeight: 25, marginBottom: 14 }}>{guide.when}</T>
+          <ChairPicture place={0} done={0} ranges={first} />
+          <View style={{ gap: 12, marginTop: 12 }}>
+            {guide.steps.map((x, i) => (
+              <View key={i} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+                <View style={{ width: 26, height: 26, borderRadius: 13, backgroundColor: t.soft, alignItems: 'center', justifyContent: 'center', marginTop: -1 }}>
+                  <T w="bold" size={14}>{String(i + 1)}</T>
+                </View>
+                <T size={16.5} style={{ flex: 1, lineHeight: 24 }}>{x}</T>
+              </View>
+            ))}
+          </View>
+          <T size={15} color={t.muted} style={{ lineHeight: 21, marginTop: 16 }}>{guide.after}</T>
+        </View>
+      </Sheet>
+    )
+  }
   return (
-    <Sheet open={open} onClose={onClose} tall>
+    <Sheet key="intro" open={open} onClose={onClose} tall foot={running ? undefined : <Button label={intro.cta} onPress={onStart} />}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
         <T w="bold" size={22}>Chair method</T>
         <Link label="Back" onPress={onClose} style={{ paddingVertical: 0 }} />
       </View>
-      <ChairPicture place={0} done={0} ranges={['1–3', '4–6', '7–9', '10–12']} />
-      <View style={{ gap: 12, marginTop: 10, marginBottom: 24 }}>
-        <T size={16.5} style={{ lineHeight: 24 }}>Put {N} in the cot awake. Sit on a chair beside the cot till {N}'s asleep.</T>
-        <T size={16.5} style={{ lineHeight: 24 }}>You can shush or rest a hand on {N}. Take it away before the eyes close.</T>
-        <T size={16.5} style={{ lineHeight: 24 }}>Once the chair moves, go over to pat or shush when {N}'s upset, then sit back down.</T>
-        <T size={16.5} style={{ lineHeight: 24 }}>If {N} wakes in the night, go back to the chair. On night 13 you say goodnight and leave the room.</T>
+      <ChairPicture place={0} done={0} ranges={first} />
+      <View style={{ gap: 12, marginTop: 10 }}>
+        {intro.steps.map((x, i) => <T key={i} size={16.5} style={{ lineHeight: 24 }}>{x}</T>)}
       </View>
-      <Button label="Start tonight" onPress={onStart} />
+      <View testID="chair-goes" style={{ gap: 10, marginTop: 18, marginBottom: 8, backgroundColor: t.soft, borderRadius: 16, padding: 16 }}>
+        {intro.goes.map((x, i) => <T key={i} size={15.5} style={{ lineHeight: 22 }}>{x}</T>)}
+      </View>
     </Sheet>
   )
 }

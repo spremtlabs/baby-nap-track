@@ -370,6 +370,17 @@ if (PUPPETEER && !fails.length) {
     await tap(p, 'Stop the timer')
     await expect(p, 'Nap ended.')
     await expect(p, 'Start')
+    // 11 October 2026: a sleep added with a quick tap on the timer, then its wake-up and its start
+    // picked in that order, read 25 h 18 min asleep and Save stayed grey.
+    await tapStart(p, 'Nap, 0 min')
+    await expect(p, 'Edit sleep')
+    await setTime(p, 'woke-up', '11:20')
+    const moved = await p.evaluate(() => document.querySelector('[data-testid=fell-asleep]')?.value)
+    if (moved !== '11:19') fail('morning', `the wake-up picked for a tapped sleep left its start at ${moved}, not 11:19`)
+    await setTime(p, 'fell-asleep', '10:50')
+    await expect(p, '30 min asleep')
+    await tap(p, 'Save')
+    await expect(p, '10:50 to 11:20am')
     await tap(p, 'Settings')
     await expect(p, "Oisín's day")
     await tap(p, 'Bedtime, more')
@@ -520,6 +531,15 @@ if (PUPPETEER && !fails.length) {
     await tap(p, 'Save')
     await expect(p, 'Added the nap from 12:30 to 1pm.')
     await expect(p, "Today's naps came to 3 h 35 min.")
+    // 11 October 2026: a wake-up picked before the start, then an earlier start, read 25 h 18 min.
+    await tapStart(p, 'Nap, 1 h 30 min')
+    await expect(p, 'Edit sleep')
+    await setTime(p, 'woke-up', '08:00')
+    await setTime(p, 'fell-asleep', '07:30')
+    await expect(p, '30 min asleep')
+    await absent(p, '24 h 30 min')
+    await tap(p, 'Save')
+    await expect(p, '7:30 to 8am')
     await done(p)
   }
 

@@ -4,7 +4,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Linking from 'expo-linking'
 import { useEffect, useState } from 'react'
 import { Pressable, Share as ShareSheet, TextInput, View } from 'react-native'
-import { MIN, afterAt, ageText, asLogged, band, dayAt, kindFor, lastAt, morningAt, targetFor, type Out, type Sleep } from '../lib/engine.ts'
+import { MIN, ageText, asLogged, band, dayAt, kindFor, morningAt, moveStart, pickEnd, pickStart, targetFor, type Out, type Sleep } from '../lib/engine.ts'
 import { chairEarly, chairLine } from '../lib/chair.ts'
 import { EmailSettings } from './Email.tsx'
 import { clampOut, napDraft, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outDraft, outView, savedLine, type NightDraft } from '../lib/model.ts'
@@ -208,15 +208,14 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
 // The times of one sleep, each set with the phone's clock or moved a few minutes at a time.
 export function SleepForm ({ ed, onChange, log }: { ed: Sleep; onChange: (x: Sleep) => void; log: boolean }) {
   const t = useTheme(), now = Date.now()
-  const nudge = (f: 's' | 'e', m: number) => onChange({ ...ed, [f]: (ed[f] as number) + m * MIN })
+  const nudge = (f: 's' | 'e', m: number) => onChange(f === 's' ? moveStart(ed, m) : { ...ed, e: ed.e! + m * MIN })
   const steps = (f: 's' | 'e') => (
     <View style={{ flexDirection: 'row', gap: 6 }}>
       {[-15, -5, 5, 15].map((m) => <StepButton key={m} label={`${m < 0 ? '−' : '+'}${Math.abs(m)}`} a11y={`${Math.abs(m)} minutes ${m < 0 ? 'earlier' : 'later'}`} onPress={() => nudge(f, m)} />)}
     </View>
   )
-  // A new start keeps the sleep the same length if the old end would now come first.
-  const pickS = (h: number, m: number) => { const len = ed.e != null ? ed.e - ed.s : null, s = lastAt(now, h, m); onChange({ ...ed, s, e: len != null && ed.e! <= s ? s + len : ed.e }) }
-  const pickE = (h: number, m: number) => onChange({ ...ed, e: afterAt(ed.s, h, m) })
+  const pickS = (h: number, m: number) => onChange(pickStart(ed, now, h, m))
+  const pickE = (h: number, m: number) => onChange(pickEnd(ed, now, h, m))
   return (
     <>
       {log ? <Segmented options={[{ value: 'nap', label: 'Nap' }, { value: 'night', label: 'Night' }]} value={ed.kind} onChange={(k) => onChange({ ...ed, kind: k as Sleep['kind'] })} /> : null}

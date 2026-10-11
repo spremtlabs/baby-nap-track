@@ -130,6 +130,31 @@ export function dayFloor (baby: Baby, now: number) {
 export const lastAt = (now: number, h: number, m: number) => { const t = dayAt(now, h, m); return t > now ? dayAt(now - DAY, h, m) : t }
 // The first time the clock shows it after a sleep started, for when it ended.
 export const afterAt = (from: number, h: number, m: number) => { const t = dayAt(from, h, m); return t <= from ? dayAt(from + DAY, h, m) : t }
+// An end more than a day after the start comes back a day at a time, keeping its clock time.
+// 11 October 2026: a wake-up picked before the start went on tomorrow, the start was then moved
+// earlier, and the nap read 25 h 18 min asleep with Save greyed out.
+export const fitEnd = (x: Sleep): Sleep => {
+  if (x.e == null) return x
+  const d = new Date(x.e)
+  while (d.getTime() - x.s > DAY) d.setDate(d.getDate() - 1)
+  return d.getTime() === x.e ? x : { ...x, e: d.getTime() }
+}
+// A new start keeps the sleep the same length if the old end would now come first.
+export const pickStart = (x: Sleep, now: number, h: number, m: number): Sleep => {
+  const s = lastAt(now, h, m)
+  return fitEnd({ ...x, s, e: x.e != null && x.e <= s ? s + (x.e - x.s) : x.e })
+}
+// A sleep under five minutes long was a tap on the timer to add a sleep. A wake-up picked for it
+// goes on the last time the clock showed it, and the start moves back with it. Any other wake-up
+// goes on the first time the clock shows it after the start.
+const TAP = 5 * MIN
+export const pickEnd = (x: Sleep, now: number, h: number, m: number): Sleep => {
+  const e = afterAt(x.s, h, m), len = x.e != null ? x.e - x.s : -1
+  if (e <= now + MIN || len < 0 || len >= TAP) return { ...x, e }
+  const back = lastAt(now, h, m)
+  return { ...x, s: back - len, e: back }
+}
+export const moveStart = (x: Sleep, mins: number): Sleep => fitEnd({ ...x, s: x.s + mins * MIN })
 // This morning's wake-up. A time still to come stays on today, and the Save button waits.
 export const morningAt = (baby: Baby, now: number, h: number, m: number) => {
   const t = dayAt(now, h, m), y = dayAt(now - DAY, h, m)

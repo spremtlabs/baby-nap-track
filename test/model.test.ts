@@ -3,7 +3,7 @@
 // engine. A screen that says something else fails here before it reaches a phone.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { afterAt, asLogged, dayFloor, engine, HOUR, kindFor, lastAt, MIN, morningAt, type Sleep } from '../src/lib/engine.ts'
+import { afterAt, asLogged, dayFloor, engine, HOUR, kindFor, lastAt, MIN, morningAt, moveStart, pickEnd, pickStart, type Sleep } from '../src/lib/engine.ts'
 import { daySleep, gapDraft, hero, mainAction, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outView, reminder, savedLine, sleepNotice, todayRows, week as weekOf } from '../src/lib/model.ts'
 import { NO_SHOP, TRIAL_NAME, TRIAL_SKU, gate, isLocked, outcomeLine, setupLine, shopGroup, trialEnd, trialNote, weekLine, weekScreen, type Paid } from '../src/lib/shop.ts'
 import { dur, fmt, plain, runParts } from '../src/lib/words.ts'
@@ -173,6 +173,42 @@ test('a time picked on the clock lands on the right day', () => {
   assert.equal(morningAt(OISIN, at(0, 13, 0), 6, 50), at(0, 6, 50))
   assert.equal(morningAt(OISIN, at(1, 1, 0), 6, 50), at(0, 6, 50))
   assert.equal(morningAt(OISIN, at(0, 6, 30), 7, 0), at(0, 7, 0))
+})
+
+// 11 October 2026: a nap added with a quick tap on the timer at 8:24, changed to 6:10 to 7:28am,
+// read 25 h 18 min asleep and Save stayed grey. The wake-up was picked first, so it went on
+// tomorrow, and the new start left it there.
+test('a sleep added with a tap on the timer takes its two times in either order', () => {
+  const now = at(0, 8, 25), tap: Sleep = { id: 'n', s: at(0, 8, 24), e: at(0, 8, 24) + 40e3, kind: 'nap', updatedAt: 0 }
+  const woke = pickEnd(tap, now, 7, 28)
+  assert.deepEqual([woke.s, woke.e], [at(0, 7, 28) - 40e3, at(0, 7, 28)])
+  const both = pickStart(woke, now, 6, 10)
+  assert.deepEqual([both.s, both.e], [at(0, 6, 10), at(0, 7, 28)])
+  assert.equal(dur(both.e! - both.s), '1 h 18 min')
+  const other = pickEnd(pickStart(tap, now, 6, 10), now, 7, 28)
+  assert.deepEqual([other.s, other.e], [at(0, 6, 10), at(0, 7, 28)])
+  // A tap at 12:29am, then the afternoon's nap.
+  const late = at(1, 0, 30), t2: Sleep = { ...tap, s: at(1, 0, 29), e: at(1, 0, 29) + 40e3 }
+  const nap = pickStart(pickEnd(t2, late, 17, 0), late, 16, 0)
+  assert.deepEqual([nap.s, nap.e], [at(0, 16, 0), at(0, 17, 0)])
+})
+
+test('a sleep changed on the clock never runs past a day, and a real sleep keeps its times', () => {
+  // As 1.0.18 left it: a start of 7:40 today and a wake-up of 7:28 tomorrow.
+  const now = at(0, 8, 25), x: Sleep = { id: 'n', s: at(0, 7, 40), e: at(1, 7, 28), kind: 'nap', updatedAt: 0 }
+  assert.equal(pickStart(x, now, 6, 10).e, at(0, 7, 28))
+  let y = x
+  while (y.s > at(0, 6, 10)) y = moveStart(y, -15)
+  assert.deepEqual([y.s, y.e], [at(0, 6, 10), at(0, 7, 28)])
+  // A start after the end keeps the length, a wake-up still to come waits for Save, and a night
+  // keeps its morning.
+  const nap: Sleep = { id: 'm', s: at(0, 7, 40), e: at(0, 8, 15), kind: 'nap', updatedAt: 0 }
+  assert.equal(pickStart(nap, now, 8, 20).e, at(0, 8, 55))
+  assert.deepEqual([pickEnd(nap, now, 8, 40).s, pickEnd(nap, now, 8, 40).e], [nap.s, at(0, 8, 40)])
+  const night: Sleep = { id: 'g', s: at(-1, 19, 30), e: at(0, 6, 10), kind: 'night', updatedAt: 0 }
+  assert.equal(pickStart(night, now, 20, 0).e, at(0, 6, 10))
+  assert.equal(moveStart(night, -15).e, at(0, 6, 10))
+  assert.deepEqual([pickEnd(night, now, 9, 0).s, pickEnd(night, now, 9, 0).e], [night.s, at(0, 9, 0)])
 })
 
 // 4 October 2026: the timer looked stopped after the tap. The count was

@@ -79,7 +79,7 @@ export const settling = (E: Engine, c: Chair | null | undefined, now: number): c
 export function cotTap (E: Engine, c: Chair | null | undefined, now: number) {
   if (!c || settling(E, c, now) || E.unknownMorning()) return false
   const a = mainAction(E)
-  return a.kind === 'add' && a.sleep.kind === 'night' && !tonight(c, now).settled
+  return a.kind === 'add' && a.sleep.kind === 'night' && !a.back && !tonight(c, now).settled
 }
 
 export type ChairTap = { kind: 'cot' } | { kind: 'asleep'; inCot: number } | null

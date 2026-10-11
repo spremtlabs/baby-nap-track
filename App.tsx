@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AppState, View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { answer, asleepToast, chairTap, fellAsleep, hold, newChair, putInCot, tonight, wentOver } from './src/lib/chair.ts'
-import { engine, kindFor, type Sleep } from './src/lib/engine.ts'
+import { engine, kindFor, withNoNap, type Sleep } from './src/lib/engine.ts'
 import { gapDraft, mainAction, savedLine } from './src/lib/model.ts'
 import { fmt } from './src/lib/words.ts'
 import { askToRemind } from './src/lib/notify.ts'
@@ -90,7 +90,7 @@ function Main () {
   // A sleep added by hand is a nap or a night by when it started, whatever the time it is added.
   const addMissed = () => {
     const now = Date.now(), s = now - 75 * 60000
-    setEditing({ id: `new-${now}`, s, e: now - 20 * 60000, kind: kindFor(st.state.baby!, s), updatedAt: now })
+    setEditing({ id: `new-${now}`, s, e: now - 20 * 60000, kind: kindFor(st.state.baby!, s, st.state.sleeps), updatedAt: now })
     setOpen('edit')
   }
   // A stretch the list says has no nap in it opens that nap, ready to save.
@@ -99,6 +99,13 @@ function Main () {
     const now = Date.now(), d = gapDraft(E, a, z)
     setEditing({ id: `new-${now}`, s: d.s, e: d.e, kind: 'nap', updatedAt: now })
     setOpen('edit')
+  }
+
+  // No to a stretch the list asked about: the answer is kept, and the list stops asking.
+  const noNap = (a: number, z: number) => {
+    if (!E) return
+    st.setBaby({ noNap: withNoNap(E.baby, a, z, Date.now()) })
+    say('Saved.')
   }
 
   // The morning the screen asked for. Past half an hour awake, it asks about the naps since.
@@ -154,7 +161,7 @@ function Main () {
       <StatusBar style={theme.name === 'night' ? 'light' : 'dark'} />
       <View style={{ flex: 1, backgroundColor: theme.bg }}>
         {st.state.baby && E
-          ? <Today E={E} g={st.gate} onBuy={buy} onWeek={startWeek} onMain={main} onSettings={() => setOpen('settings')} onEdit={openEdit} onNight={() => setOpen('night')} onAdd={addMissed} onMorning={morning} onWake={() => setOpen('wake')} onGap={addGap} onOut={() => setOpen('out')} onType={() => setOpen('typed')}
+          ? <Today E={E} g={st.gate} onBuy={buy} onWeek={startWeek} onMain={main} onSettings={() => setOpen('settings')} onEdit={openEdit} onNight={() => setOpen('night')} onAdd={addMissed} onMorning={morning} onWake={() => setOpen('wake')} onGap={addGap} onNoNap={noNap} onOut={() => setOpen('out')} onType={() => setOpen('typed')}
               onWay={(day, pick, by, first) => st.setBaby({ route: { day, pick, by, first }, routeLikes: pick })}
               onFewer={(n) => {
                 st.setBaby(n == null ? { napsAsked: Date.now() } : { naps: n, napsAsked: Date.now() })

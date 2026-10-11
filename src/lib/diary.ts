@@ -65,7 +65,7 @@ function runs (sleeps: Sleep[]) {
 }
 
 export function diary (baby: Baby, log: Sleep[], now: number, days: number): Diary {
-  const sleeps = readLog(baby, log)
+  const sleeps = readLog(baby, log, now)
   // The newest line starts at the last 6pm a night could have begun by now.
   const last = sixOf(now - 18 * HOUR)
   const sixes = Array.from({ length: days }, (_, k) => sixOf(last, days - 1 - k))

@@ -1,6 +1,6 @@
 // What each part of the Today screen says, worked out from the engine. The screens only draw
 // these, so the wording is tested here once, in plain strings.
-import { DAY, HOUR, MIN, ageText, ageWeeks, atMins, band, bandFor, dayAt, engine, hourOf, isMark, napHours, round5, targetFor, type Baby, type Engine, type Out, type Route, type Sleep, type Window } from './engine.ts'
+import { DAY, HOUR, MIN, ageText, ageWeeks, atMins, band, bandFor, dayAt, engine, isMark, napHours, round5, targetFor, type Baby, type Engine, type Out, type Route, type Sleep, type Window } from './engine.ts'
 import { isLocked, lockedHero, offerHero, trialNote, type Gate } from './shop.ts'
 import { bigDur, bigTime, dur, fmt, hours, range, runParts, tallyDur, times, type Part } from './words.ts'
 
@@ -224,7 +224,8 @@ export type Row = { mark: 'edge' | 'done' | 'plan' | 'next' | 'gap' | 'out'; tit
 
 export function todayRows (E: Engine, g: Gate = NONE): { heading: string; rows: Row[] } {
   const N = E.baby.name, ph = E.phase(), now = E.now, rows: Row[] = [], out = E.out
-  const gapRow = ([a, z]: [number, number]): Row => ({ at: a + 1, mark: 'gap', title: `Nothing logged ${range(a, z, ' to ')}`, sub: `Did ${N} nap in there?`, right: 'Add', gap: [a, z] })
+  // The row asks, and Yes and No under it answer, from 1.0.28. Up to 1.0.27 it could only be added to.
+  const gapRow = ([a, z]: [number, number]): Row => ({ at: a + 1, mark: 'gap', title: `Nothing logged ${range(a, z, ' to ')}`, sub: `Did ${N} nap in there?`, right: '', gap: [a, z] })
   const outRows = (t0: number) => {
     if (!out || out.leave < t0) return
     if (E.activeOut()) {
@@ -369,16 +370,16 @@ export const ageLine = (E: Engine) => `${ageText(E.baby, E.now)} old`
 
 // What a tap on the main button does. Returns the change to the log and the toast.
 export type Action =
-  | { kind: 'add'; sleep: Omit<Sleep, 'id' | 'updatedAt'>; toast: string }
+  // `back` is the baby asleep again before the usual wake-up, which is no bedtime.
+  | { kind: 'add'; sleep: Omit<Sleep, 'id' | 'updatedAt'>; toast: string; back?: boolean }
   | { kind: 'end'; id: string; up: boolean; toast: string }
   | { kind: 'ask'; id: string }
 
 export function mainAction (E: Engine): Action {
   const N = E.baby.name, ph = E.phase(), now = E.now
   if (ph === 'day') {
-    const p = E.dayStart().unknown ? undefined : E.plan()[0], m = hourOf(now) * 60
-    const kind = (p && p.bed && now >= p.s - HOUR) || m >= E.baby.bed - 30 || m < E.baby.wake - 150 ? 'night' : 'nap'
-    return { kind: 'add', sleep: { s: now, e: null, kind, up: false }, toast: kind === 'night' ? `Down for the night at ${fmt(now)}.` : `Nap started at ${fmt(now)}.` }
+    const k = E.startKind()
+    return { kind: 'add', sleep: { s: now, e: null, kind: k.kind, up: false }, back: k.back, toast: k.kind === 'nap' ? `Nap started at ${fmt(now)}.` : k.back ? `Back asleep at ${fmt(now)}.` : `Down for the night at ${fmt(now)}.` }
   }
   // In the day a tap starts a nap, and the waking before it becomes up for the day.
   if (ph === 'waking' && napHours(E.baby, now)) return { kind: 'add', sleep: { s: now, e: null, kind: 'nap', up: false }, toast: `Nap started at ${fmt(now)}.` }

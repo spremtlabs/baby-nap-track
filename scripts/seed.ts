@@ -2,11 +2,25 @@
 // screenshots load it into the web build's storage before the page opens.
 import { MIN } from '../src/lib/engine.ts'
 import { eveningOf } from '../src/lib/chair.ts'
-import { CIAN, OISIN, at, sleep, week } from '../test/sample.ts'
+import { AT_FIVE_MONTHS, CIAN, OISIN, at, sleep, week } from '../test/sample.ts'
 
 export const STORE_KEY = 'snug.state.v1'
 
-export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'short-last' | 'young' | 'fewer' | 'typed-evening'): { state: string; now: number } {
+export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'short-last' | 'young' | 'fewer' | 'typed-evening' | 'early-bed' | 'back-asleep'): { state: string; now: number } {
+  // 11 October 2026 at 6pm, at five months: a night with a waking from 5 to 6am, three short naps,
+  // and the screen giving an early bedtime of 6:30pm. From 1.0.28 a tap on the timer then is the
+  // night. Up to 1.0.27 it was read against the short nap the plan held for 4:45pm.
+  if (scenario === 'early-bed') {
+    const sleeps = [sleep(at(-1, 19, 53), at(0, 5, 0), 'night'), sleep(at(0, 6, 0), at(0, 7, 30), 'night', true),
+      sleep(at(0, 7, 45), at(0, 8, 30), 'nap'), sleep(at(0, 10, 35), at(0, 11, 11), 'nap'), sleep(at(0, 14, 50), at(0, 15, 15), 'nap')]
+    return { state: JSON.stringify({ baby: AT_FIVE_MONTHS, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 18, 0) }
+  }
+  // 6am with the night logged to 5am and the usual wake-up at 7: a tap on the timer is the baby
+  // back asleep, from 1.0.28.
+  if (scenario === 'back-asleep') {
+    const sleeps = [...week().filter((x) => x.s < at(-1, 18, 0)), sleep(at(-1, 19, 53), at(0, 5, 0), 'night', true)]
+    return { state: JSON.stringify({ baby: OISIN, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 6, 0) }
+  }
   // 11 October 2026 at 6:06pm: down at 7:53pm, up at 5:38am, two naps and a nap since 6pm, before
   // the whole day was typed in.
   if (scenario === 'typed-evening') {

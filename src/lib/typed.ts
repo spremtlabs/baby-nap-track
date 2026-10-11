@@ -14,10 +14,12 @@
    lists each one in the parent's own words. A length such as `(45 min)` is no time of day. Each
    time with no am or pm after the first goes on the first time the clock shows it after the one
    before. */
-import { DAY, HOUR, MIN, asLogged, dayAt, dayFloor, engine, isMark, kindFor, withMorning, type Baby, type Sleep } from './engine.ts'
+import { DAY, HOUR, MIN, asLogged, dayAt, dayFloor, engine, isMark, newSleep, withMorning, type Baby, type Kind, type Sleep } from './engine.ts'
 
-// A wake-up typed with the night's start carries it in `from`.
-export type TypedRow = { k: 'wake'; t: number; p: string; from?: number } | { k: 'sleep'; s: number; e: number | null; p: string }
+// A wake-up typed with the night's start carries it in `from`. A sleep carries what it goes in the
+// log as, once it has been checked against the log: a nap, or the night, and `up` when it carries
+// the night on to up for the day.
+export type TypedRow = { k: 'wake'; t: number; p: string; from?: number } | { k: 'sleep'; s: number; e: number | null; p: string; kind?: Kind; up?: boolean }
 // A wake-up that ends the sleep the timer is running: a nap, or the night, which is then up for the day.
 export type TypedEnd = { k: 'end'; id: string; s: number; t: number; night: boolean; p: string }
 export type Typed = { rows: ((TypedRow | TypedEnd) & { i: number })[]; left: string[]; drop: string[] }
@@ -190,7 +192,7 @@ function read (text: string, baby: Baby, now: number, early: boolean): { rows: T
 // the night is not added.
 export function typed (text: string, baby: Baby, log: Sleep[], now: number, fixes: Record<number, TypedRow | null> = {}): Typed {
   const r = readTyped(text, baby, now), left = [...r.left], drop: string[] = [], rows: Typed['rows'] = []
-  const live = log.filter((x) => !x.deleted && !isMark(x)).map((x) => asLogged(baby, x)), ds = engine(baby, log, now).dayStart()
+  const live = log.filter((x) => !x.deleted && !isMark(x)).map((x) => asLogged(baby, x, now)), ds = engine(baby, log, now).dayStart()
   const read: Typed['rows'] = []
   r.rows.forEach((x0, i) => {
     const x = i in fixes ? fixes[i] : x0
@@ -204,12 +206,21 @@ export function typed (text: string, baby: Baby, log: Sleep[], now: number, fixe
   })
   const wake = read.find((x) => x.k === 'wake')
   const ended = ends(log, read, now)
-  const after = (wake && wake.k === 'wake' ? withMorning(baby, ended, now, wake.t, 'typed', wake.from).sleeps : ended).filter((x) => !x.deleted && !isMark(x)).map((x) => asLogged(baby, x))
+  const base = wake && wake.k === 'wake' ? withMorning(baby, ended, now, wake.t, 'typed', wake.from).sleeps : ended
+  const after = base.filter((x) => !x.deleted && !isMark(x)).map((x) => asLogged(baby, x, now))
+  // Each sleep is a nap or the night by the log as it stands once the ones typed before it are in.
+  // One still going is read the way a tap on the timer at its start would be, so the baby put down
+  // for an early bedtime is down for the night.
+  const made: Sleep[] = []
   for (const x of read) {
     if (x.k !== 'sleep') { rows.push(x); continue }
     const end = x.e ?? now, hits = after.filter((y) => y.s < end && (y.e ?? now) > x.s)
-    if (hits.some((y) => y.kind === 'night')) left.push(x.p)
-    else { drop.push(...hits.map((y) => y.id)); rows.push(x) }
+    if (hits.some((y) => y.kind === 'night')) { left.push(x.p); continue }
+    drop.push(...hits.map((y) => y.id))
+    const gone = new Set(drop), cur = [...base.filter((y) => !y.deleted && !gone.has(y.id)), ...made]
+    const k = x.e == null ? { kind: engine(baby, cur, x.s).startKind().kind, up: false } : newSleep(baby, cur, x.s, x.e)
+    made.push({ id: `typed-${x.i}`, s: x.s, e: x.e, kind: k.kind, up: k.up, updatedAt: now })
+    rows.push({ ...x, kind: k.kind, up: k.up })
   }
   return { rows, left, drop: [...new Set(drop)] }
 }
@@ -232,7 +243,8 @@ export function applyTyped (baby: Baby, log: Sleep[], now: number, r: Typed, id:
   for (const x of r.rows) {
     if (x.k !== 'sleep') continue
     const n = id()
-    sleeps = [...sleeps, { id: n, s: x.s, e: x.e, kind: kindFor(baby, x.s), up: false, updatedAt: now }]
+    const k = x.kind ? { kind: x.kind, up: !!x.up } : newSleep(baby, sleeps, x.s, x.e)
+    sleeps = [...sleeps, { id: n, s: x.s, e: x.e, kind: k.kind, up: k.up, updatedAt: now }]
     ids.push(n)
   }
   return { sleeps: sleeps.sort((a, b) => a.s - b.s), ids }

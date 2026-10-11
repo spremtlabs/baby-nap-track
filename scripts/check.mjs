@@ -369,7 +369,7 @@ if (PUPPETEER && !fails.length) {
     await expect(p, '5:40am')
     await expect(p, '6:10 to 7:30am')
     await absent(p, 'fed at 6')
-    // The link under Today's list opens the same sheet for later in the day. A wake-up on its own
+    // The link under the timer opens the same sheet for later in the day. A wake-up on its own
     // after a nap, with nothing running, is not the morning.
     await tap(p, 'Type what happened')
     await expect(p, 'Each sleep shows up here as you type.')
@@ -410,6 +410,10 @@ if (PUPPETEER && !fails.length) {
     await expect(p, '6 to 7:30am')
     await expect(p, '2:50 to 3:15pm')
     await absent(p, 'Not added')
+    // 1.0.28: asleep again from 6am is the night going on, and asleep at 6pm with an early bedtime
+    // of 6:30 is the night. Up to 1.0.27 the first was a nap and the second read Napping.
+    await expect(p, 'Back asleep')
+    await expect(p, 'Asleep')
     // The phone's box grows with the words, so Save has to sit outside the part that scrolls.
     const box = await p.evaluate(() => {
       const b = [...document.querySelectorAll('[role=button]')].filter((e) => e.innerText.trim() === 'Save').pop()
@@ -423,12 +427,60 @@ if (PUPPETEER && !fails.length) {
     await look(p, 'typed-evening-sheet')
     await p.evaluate(() => [...document.querySelectorAll('[role=button]')].filter((e) => e.innerText.trim() === 'Save').pop()?.click())
     await new Promise((r) => setTimeout(r, 400))
-    await expect(p, '7:53pm to 5am')
-    await expect(p, '6 to 7:30am')
+    await expect(p, 'Down for the night at 6pm.')
+    await expect(p, 'Up for the day')
+    await expect(p, '7:30am')
     await expect(p, '2:50 to 3:15pm')
-    await expect(p, 'since 6pm')
+    await absent(p, 'since 6pm')
+    await absent(p, 'Napping')
+    await absent(p, '6 to 7:30am')
     await absent(p, 'to go before bed')
     await look(p, 'typed-evening')
+    await done(p)
+  }
+
+  // 11 October 2026: the screen gave an early bedtime of 6:30pm, the baby went down at 6pm, and the
+  // tap on the timer was logged as a nap with bedtime still on the list for 7pm.
+  {
+    const p = await open('early-bed', seed('early-bed'))
+    await expect(p, 'Early bedtime')
+    await expect(p, '7:53pm to 7:30am, woke once')
+    await expect(p, 'Nothing logged 11:11am to 2:50pm')
+    await look(p, 'early-bed')
+    await scrollTo(p, 'Today')
+    await look(p, 'early-bed-list')
+    await tap(p, 'Start the timer')
+    await expect(p, 'Down for the night at 6pm.')
+    await expect(p, 'Asleep')
+    await absent(p, 'Napping')
+    await absent(p, 'Nap started')
+    await look(p, 'early-bed-down')
+    await done(p)
+  }
+
+  // 11 October 2026: awake at 5am and asleep again at 6, with the usual wake-up at 7. The sleep from
+  // 6 was logged as the day's first nap. It is the night going on, and the wake-up asks about the day.
+  {
+    const p = await open('back-asleep', seed('back-asleep'))
+    await tap(p, 'Start the timer')
+    await expect(p, 'Back asleep at 6am.')
+    await expect(p, 'Down for the night at 7:53pm and woke once.')
+    await absent(p, 'Nap started')
+    await look(p, 'back-asleep')
+    await done(p)
+  }
+
+  // 11 October 2026: Type what happened sits under the timer, above the day's sleep, and once on
+  // the screen. Up to 1.0.27 it was the last line under Today's list.
+  {
+    const p = await open('typed-place', seed('morning'))
+    const at = await p.evaluate(() => {
+      const top = (w) => [...document.querySelectorAll('div')].filter((d) => d.textContent.trim() === w && d.children.length <= 1).map((d) => d.getBoundingClientRect().top)
+      return { link: top('Type what happened'), timer: document.querySelector('[data-testid=timer]')?.getBoundingClientRect().bottom ?? null, day: top('DAY SLEEP').concat(top('Day sleep'))[0] ?? null, n: [...document.querySelectorAll('[role=button]')].filter((e) => e.innerText.trim() === 'Type what happened').length }
+    })
+    if (at.n !== 1) fail('typed-place', `Type what happened is on the screen ${at.n} times`)
+    if (at.timer == null || at.day == null || !(at.link[0] > at.timer && at.link[0] < at.day)) fail('typed-place', `Type what happened is not between the timer and the day's sleep: ${JSON.stringify(at)}`)
+    await look(p, 'typed-place')
     await done(p)
   }
 
@@ -668,10 +720,29 @@ if (PUPPETEER && !fails.length) {
     await expect(p, 'Nothing logged 7 to 11:05am')
     await expect(p, 'No nap logged')
     await look(p, 'gap')
-    await tap(p, 'Nothing logged 7 to 11:05am, Add')
+    await scrollTo(p, 'Today')
+    await look(p, 'gap-row')
+    await tap(p, 'Nothing logged 7 to 11:05am, Yes')
     await expect(p, 'Add a sleep')
     await tap(p, 'Save')
     await expect(p, 'Added.')
+    await absent(p, 'Nothing logged')
+    await done(p)
+  }
+
+  // 11 October 2026: the row asked whether the baby napped and gave only Add. No takes the row and
+  // its bar off the graph, and the answer is still there when the app opens again.
+  {
+    const p = await open('gap-no', seed('gap'))
+    await expect(p, 'Did Oisín nap in there?')
+    await tap(p, 'Nothing logged 7 to 11:05am, No')
+    await expect(p, 'Saved.')
+    await absent(p, 'Nothing logged')
+    await absent(p, 'No nap logged')
+    await scrollTo(p, 'Today')
+    await look(p, 'gap-no')
+    await p.reload({ waitUntil: 'networkidle0' })
+    await expect(p, '11:05 to 11:45am')
     await absent(p, 'Nothing logged')
     await done(p)
   }
@@ -942,6 +1013,9 @@ if (PUPPETEER && !fails.length) {
     const p = await open('day-7', { ...paidSeed('morning', (now) => ({ trialFrom: now - 7 * DAY })), play: { price: '€9.99' } })
     await expect(p, 'Nap window in 35 min')
     await expect(p, 'Nap times are free to the end of today.')
+    // From 1.0.28 Type what happened sits where this line was, and the line follows it.
+    const order = await p.evaluate(() => { const top = (w) => [...document.querySelectorAll('div')].find((d) => d.textContent.trim() === w && d.children.length <= 1)?.getBoundingClientRect().top; return [top('Type what happened'), top('Nap times are free to the end of today. Then they\'re €9.99, once.')] })
+    if (!(order[0] < order[1])) fail('day-7', `the line about the free week is not under Type what happened: ${JSON.stringify(order)}`)
     await expectSent(p, 'snug_day', { day: 7, gate: 'trial' })
     if (await count(p, 'snug_free_week_ended')) fail('day-7', 'sent the free week ending on its last day')
     await look(p, 'day-7')

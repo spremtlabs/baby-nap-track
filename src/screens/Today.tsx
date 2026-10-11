@@ -29,6 +29,8 @@ type Props = {
   onMorning: (t: number) => void
   onWake: () => void
   onGap: (a: number, z: number) => void
+  // No to a stretch with no nap logged: the list stops asking about it.
+  onNoNap: (a: number, z: number) => void
   onOut: () => void
   onType: () => void
   // The chair method, while it runs, and the link that keeps the chair where it was one more night.
@@ -44,7 +46,7 @@ type Props = {
   onFewer: (n: number | null) => void
 }
 
-export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, onEdit, onNight, onAdd, onMorning, onWake, onGap, onOut, onType, chair, onHold, onTrip, onCry, onWhy, onWay, onFewer }: Props) {
+export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, onEdit, onNight, onAdd, onMorning, onWake, onGap, onNoNap, onOut, onType, chair, onHold, onTrip, onCry, onWhy, onWay, onFewer }: Props) {
   const t = useTheme(), insets = useSafeAreaInsets()
   const scroll = useRef(new Animated.Value(0)).current
   const h = chairHero(E, chair, hero(E, g), E.now), unknown = E.unknownMorning()
@@ -103,6 +105,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
             <Button label={h.buy} alt onPress={g.kind === 'offer' ? onWeek : onBuy} style={{ marginTop: 26 }} />
             <TimerBlock h={h} onMain={onMain} />
             {card ? <ChairCard card={card} onHold={onHold} /> : null}
+            <Link center ink label="Type what happened" onPress={onType} />
           </>
         ) : (
           <>
@@ -122,12 +125,14 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
             {card ? <ChairCard card={card} onHold={onHold} /> : null}
             {h.upForDay ? <Link center label={`${E.baby.name} is up for the day`} onPress={onUpForDay} /> : null}
             {h.outLink ? <Link center label={h.outLink} onPress={onOut} /> : null}
-            {h.shop ? <T size={14} color={t.muted} style={{ marginTop: 16, lineHeight: 20 }}>{h.shop}</T> : null}
+            {/* Under the timer from 1.0.28, where the line about the free week sat. That line follows it. */}
+            <Link center ink label="Type what happened" onPress={onType} style={h.upForDay || h.outLink ? { paddingTop: 0 } : undefined} />
+            {h.shop ? <T size={14} color={t.muted} style={{ marginTop: 4, lineHeight: 20 }}>{h.shop}</T> : null}
           </>
         )}
 
         {unknown ? null : <DaySleepSection E={E} g={g} />}
-        {unknown ? null : <TodaySection E={E} g={g} onEdit={onEdit} onNight={onNight} onAdd={onAdd} onWake={onWake} onGap={onGap} onOut={onOut} onType={onType} />}
+        {unknown ? null : <TodaySection E={E} g={g} onEdit={onEdit} onNight={onNight} onAdd={onAdd} onWake={onWake} onGap={onGap} onNoNap={onNoNap} onOut={onOut} />}
         {chart ? <ChairChart chart={chart} ask={ask && !askTonight ? askCard : null} /> : null}
         <WeekSection E={E} />
       </Animated.ScrollView>
@@ -300,24 +305,50 @@ function Key ({ label, kind }: { label: string; kind?: 'plan' | 'out' | 'gap' })
   )
 }
 
-function TodaySection ({ E, g, onEdit, onNight, onAdd, onWake, onGap, onOut, onType }: { E: Engine; g: Gate; onEdit: (id: string) => void; onNight: () => void; onAdd: () => void; onWake: () => void; onGap: (a: number, z: number) => void; onOut: () => void; onType: () => void }) {
+function TodaySection ({ E, g, onEdit, onNight, onAdd, onWake, onGap, onNoNap, onOut }: { E: Engine; g: Gate; onEdit: (id: string) => void; onNight: () => void; onAdd: () => void; onWake: () => void; onGap: (a: number, z: number) => void; onNoNap: (a: number, z: number) => void; onOut: () => void }) {
   const { heading, rows } = todayRows(E, g)
   return (
     <View>
       <Heading>{heading}</Heading>
-      <Rows rows={rows} onPress={(r) => (r.night ? onNight : r.wake ? onWake : r.gap ? () => onGap(r.gap![0], r.gap![1]) : r.out ? onOut : r.edit ? () => onEdit(r.edit!) : null)} />
+      <Rows rows={rows} onNo={(r) => onNoNap(r.gap![0], r.gap![1])} onPress={(r) => (r.night ? onNight : r.wake ? onWake : r.gap ? () => onGap(r.gap![0], r.gap![1]) : r.out ? onOut : r.edit ? () => onEdit(r.edit!) : null)} />
       <Link center label="Add a sleep you missed" onPress={onAdd} />
-      <Link center ink label="Type what happened" onPress={onType} style={{ paddingTop: 0 }} />
     </View>
   )
 }
 
-export function Rows ({ rows, onPress }: { rows: ReturnType<typeof todayRows>['rows']; onPress?: (r: ReturnType<typeof todayRows>['rows'][number]) => (() => void) | null }) {
+// One answer to the question a row asks.
+function Answer ({ label, a11y, onPress }: { label: string; a11y: string; onPress: () => void }) {
+  const t = useTheme()
+  return (
+    <Pressable accessibilityRole="button" accessibilityLabel={a11y} onPress={onPress} hitSlop={6}
+      style={({ pressed }) => ({ minWidth: 76, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 22, backgroundColor: t.soft, alignItems: 'center', opacity: pressed ? 0.7 : 1 })}>
+      <T w="semibold" size={15.5}>{label}</T>
+    </Pressable>
+  )
+}
+
+export function Rows ({ rows, onPress, onNo }: { rows: ReturnType<typeof todayRows>['rows']; onPress?: (r: ReturnType<typeof todayRows>['rows'][number]) => (() => void) | null; onNo?: (r: ReturnType<typeof todayRows>['rows'][number]) => void }) {
   const t = useTheme()
   return (
     <View style={{ borderTopWidth: 1, borderTopColor: t.line }}>
       {rows.map((r, i) => {
         const gap = r.mark === 'gap', out = r.mark === 'out', quiet = r.mark === 'plan' || r.mark === 'next'
+        // A stretch with no nap logged asks whether the baby napped, and Yes and No answer it. Yes
+        // opens the nap to add, and No takes the row away.
+        const yes = gap && onPress ? onPress(r) : null
+        if (gap && yes && onNo) return (
+          <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: t.line }}>
+            <View style={{ width: 10, height: 10, borderRadius: 5, marginTop: 6, borderWidth: 1.5, borderColor: t.honey, borderStyle: 'dashed' }} />
+            <View style={{ flex: 1, gap: 2 }}>
+              <T w="semibold" size={16} color={t.honeyText}>{r.title}</T>
+              <T size={14} color={t.muted}>{r.sub}</T>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 10, marginBottom: 2 }}>
+                <Answer label="Yes" a11y={`${r.title}, Yes`} onPress={yes} />
+                <Answer label="No" a11y={`${r.title}, No`} onPress={() => onNo(r)} />
+              </View>
+            </View>
+          </View>
+        )
         const body = (
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, paddingVertical: 13, borderBottomWidth: 1, borderBottomColor: t.line }}>
             <View style={{

@@ -3,11 +3,12 @@
 // something else fails here before it reaches a phone.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { afterAt, asLogged, dayFloor, engine, HOUR, kindFor, lastAt, MIN, morningAt, moveStart, pickEnd, pickStart, type Sleep } from '../src/lib/engine.ts'
+import { afterAt, asLogged, dayFloor, engine, HOUR, kindFor, lastAt, MIN, morningAt, moveStart, newSleep, pickEnd, pickStart, withNoNap, type Sleep } from '../src/lib/engine.ts'
+import { chairTap } from '../src/lib/chair.ts'
 import { daySleep, gapDraft, hero, mainAction, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outView, reminder, savedLine, sleepNotice, todayRows, week as weekOf } from '../src/lib/model.ts'
 import { NO_SHOP, TRIAL_NAME, TRIAL_SKU, gate, isLocked, outcomeLine, setupLine, shopGroup, trialEnd, trialNote, weekLine, weekScreen, type Paid } from '../src/lib/shop.ts'
 import { dur, fmt, plain, runParts } from '../src/lib/words.ts'
-import { CIAN, OISIN, at, sleep, week } from './sample.ts'
+import { AT_FIVE_MONTHS, CIAN, OISIN, at, sleep, week } from './sample.ts'
 
 const screen = (log: Sleep[], now: number, baby = OISIN) => {
   const E = engine(baby, log, now)
@@ -647,4 +648,119 @@ test('a tap of the timer waits in the list for its times, and the plan and the t
   assert.equal(daySleep(E).say, daySleep(W).say)
   const row = todayRows(E).rows.find((r) => r.title === 'Nap, set the times')
   assert.deepEqual([row?.right, row?.edit], ['11:30am', t[t.length - 1].id])
+})
+
+// 11 October 2026: the day's naps fell short, the screen gave an early bedtime of 6:30pm, and the
+// baby put down at 6pm was logged as napping, with bedtime still on the list for 7pm.
+const shortDay = () => [sleep(at(-1, 19, 53), at(0, 5, 0), 'night'), sleep(at(0, 6, 0), at(0, 7, 30), 'night', true),
+  sleep(at(0, 7, 45), at(0, 8, 30), 'nap'), sleep(at(0, 10, 35), at(0, 11, 11), 'nap'), sleep(at(0, 14, 50), at(0, 15, 15), 'nap')]
+
+// At five months the plan still held a short nap for 4:45pm, long gone by 6, so the tap was read
+// against that nap and never against the bedtime on the screen.
+test('a baby put down for the early bedtime the screen gave is down for the night', () => {
+  for (const baby of [AT_FIVE_MONTHS, OISIN]) {
+    const E = engine(baby, shortDay(), at(0, 18, 0)), a = mainAction(E)
+    assert.deepEqual([hero(E).eyebrow, plain(hero(E).big)], ['Early bedtime', '6:30 pm'])
+    assert.deepEqual(a.kind === 'add' && [a.sleep.kind, a.toast], ['night', 'Down for the night at 6pm.'])
+    const down = engine(baby, [...shortDay(), sleep(at(0, 18, 0), null, 'night')], at(0, 19, 26))
+    assert.equal(down.phase(), 'night')
+    assert.equal(hero(down).sub, 'Down for the night at 6pm.')
+    assert.ok(todayRows(down).rows.some((r) => r.title === 'Down for the night' && r.right === '6pm'))
+    assert.ok(!todayRows(down).rows.some((r) => r.title === 'Napping' || r.title === 'Bedtime'))
+  }
+  assert.equal(fmt(engine(AT_FIVE_MONTHS, shortDay(), at(0, 18, 0)).plan()[0].c), '4:45pm')
+  // The list after bedtime still asks about the afternoon with no nap in it.
+  const down = engine(AT_FIVE_MONTHS, [...shortDay(), sleep(at(0, 18, 0), null, 'night')], at(0, 19, 26))
+  assert.equal(todayRows(down).rows.find((r) => r.mark === 'gap')?.title, 'Nothing logged 11:11am to 2:50pm')
+  // While a nap can still be asked for, a tap is a nap.
+  const four = mainAction(engine(AT_FIVE_MONTHS, shortDay(), at(0, 16, 40)))
+  assert.equal(four.kind === 'add' && four.sleep.kind, 'nap')
+})
+
+test('with earlier bedtime picked and the last nap missed, a tap from half an hour before that bedtime is the night', () => {
+  const log = [...week(), sleep(at(0, 12, 15), at(0, 12, 45), 'nap')]
+  const picked = { ...OISIN, route: { day: dayFloor(OISIN, at(0, 13, 0)), pick: 'bed' as const, by: 60 } }
+  assert.equal(fmt(engine(picked, log, at(0, 17, 35)).budget().bedT), '6pm')
+  const a = mainAction(engine(picked, log, at(0, 17, 35))), early = mainAction(engine(picked, log, at(0, 16, 30)))
+  assert.deepEqual(a.kind === 'add' && [a.sleep.kind, a.toast], ['night', 'Down for the night at 5:35pm.'])
+  assert.equal(early.kind === 'add' && early.sleep.kind, 'nap')
+})
+
+// 11 October 2026: awake from 5 to 6am and asleep again until 7:30, with the usual wake-up at 7.
+// The list said up for the day at 5am and a nap from 6.
+test('a sleep that starts before the usual wake-up carries on the night logged before it', () => {
+  const night = [sleep(at(-1, 19, 0), at(0, 5, 0), 'night', true)]
+  const E = engine(OISIN, night, at(0, 6, 0)), a = mainAction(E)
+  assert.equal(E.phase(), 'day')
+  assert.deepEqual(a.kind === 'add' && [a.sleep.kind, a.back, a.toast], ['night', true, 'Back asleep at 6am.'])
+  // The chair method reads it as back asleep too, and asks for no bedtime.
+  const chair = { from: '2020-01-01', held: [], settles: [], inCot: null }
+  assert.equal(chairTap(engine({ ...OISIN, chair }, night, at(0, 6, 0)), chair, at(0, 6, 0)), null)
+  const asleep = engine(OISIN, [...night, sleep(at(0, 6, 0), null, 'night')], at(0, 6, 40))
+  assert.equal(asleep.phase(), 'night')
+  assert.equal(hero(asleep).sub, 'Since 6am. Down for the night at 7pm and woke once.')
+  assert.equal(mainAction(engine(OISIN, [...night, sleep(at(0, 6, 0), null, 'night')], at(0, 7, 30))).kind, 'ask')
+  const up = engine(OISIN, [...night, sleep(at(0, 6, 0), at(0, 7, 30), 'night', true)], at(0, 8, 0))
+  assert.equal(up.dayStart().t, at(0, 7, 30))
+  assert.deepEqual(todayRows(up).rows.slice(0, 2).map((r) => [r.title, r.sub ?? '', r.right]), [['Last night', '7pm to 7:30am, woke once', '11 h 30 min'], ['Up for the day', '', '7:30am']])
+  // A sleep added by hand goes in the same way, and ends with the baby up for the day.
+  assert.equal(kindFor(OISIN, at(0, 6, 0), night), 'night')
+  assert.deepEqual(newSleep(OISIN, night, at(0, 6, 0), at(0, 7, 30)), { kind: 'night', up: true })
+  // From the usual wake-up on it is a nap, and so is one after a morning typed in without its night.
+  assert.equal(kindFor(OISIN, at(0, 7, 5), night), 'nap')
+  const mark = [sleep(at(0, 5, 0), at(0, 5, 0), 'night', true)]
+  assert.equal(kindFor(OISIN, at(0, 6, 0), mark), 'nap')
+  const tap = mainAction(engine(OISIN, mark, at(0, 6, 0)))
+  assert.equal(tap.kind === 'add' && tap.sleep.kind, 'nap')
+  // A nap already logged since the wake-up leaves the next sleep a nap.
+  assert.equal(kindFor(OISIN, at(0, 6, 50), [...night, sleep(at(0, 5, 40), at(0, 6, 20), 'nap')]), 'nap')
+})
+
+test('a stretch of night saved after up for the day reads as one night with a waking', () => {
+  const log = [sleep(at(-1, 19, 53), at(0, 5, 0), 'night', true), sleep(at(0, 6, 0), at(0, 7, 30), 'night'), sleep(at(0, 7, 45), at(0, 8, 30), 'nap')]
+  const E = engine(OISIN, log, at(0, 9, 0)), ln = E.lastNight()
+  assert.equal(E.dayStart().t, at(0, 7, 30))
+  assert.deepEqual([ln?.wakes, ln?.segs.length, dur(ln?.asleep ?? 0)], [1, 2, '10 h 37 min'])
+  assert.deepEqual(E.napsSince(E.dayStart().t).map((x) => x.s), [at(0, 7, 45)])
+  // That evening's night, twelve hours on, is a new night.
+  const eve = engine(OISIN, [...log, sleep(at(0, 19, 0), null, 'night')], at(0, 20, 0))
+  assert.equal(eve.nightSegs().length, 1)
+  assert.equal(eve.nightDay().t0, at(0, 7, 30))
+})
+
+// 11 October 2026: the list asked `Did Oisín nap in there?` and gave only Add.
+test('No to a stretch with no nap logged takes the question off the list and the graph', () => {
+  const log = [sleep(at(-1, 19, 10), at(0, 7, 0), 'night', true), sleep(at(0, 11, 5), at(0, 11, 45), 'nap')], now = at(0, 12, 30)
+  const gap = todayRows(engine(OISIN, log, now)).rows.find((r) => r.mark === 'gap')
+  assert.deepEqual([gap?.title, gap?.sub, gap?.right], ['Nothing logged 7 to 11:05am', 'Did Oisín nap in there?', ''])
+  const said = { ...OISIN, noNap: withNoNap(OISIN, gap!.gap![0], gap!.gap![1], now) }
+  const E = engine(said, log, now)
+  assert.equal(todayRows(E).rows.some((r) => r.mark === 'gap'), false)
+  assert.equal(daySleep(E).gaps, false)
+  // The nap moved to start earlier leaves a shorter stretch inside the one answered for.
+  assert.equal(todayRows(engine(said, [log[0], sleep(at(0, 10, 50), at(0, 11, 45), 'nap')], now)).rows.some((r) => r.mark === 'gap'), false)
+  // A later stretch is still asked about, after bedtime too.
+  const later = [...log, sleep(at(0, 19, 5), null, 'night')]
+  assert.equal(todayRows(engine(said, later, at(0, 19, 30))).rows.find((r) => r.mark === 'gap')?.title, 'Nothing logged 11:45am to 7:05pm')
+  // Answers older than three days are dropped, and the same answer is kept once.
+  const old = { ...OISIN, noNap: [[at(-5, 9, 0), at(-5, 13, 0)], [at(0, 7, 0), at(0, 11, 5)]] as [number, number][] }
+  assert.deepEqual(withNoNap(old, at(0, 7, 0), at(0, 11, 5), now), [[at(0, 7, 0), at(0, 11, 5)]])
+})
+
+// 11 October 2026: the early bedtime at 6pm that 1.0.27 logged as a nap ran to the morning, and the
+// week would have counted thirteen hours of day sleep.
+test('a nap from the evening that ran three hours or more is read as the night', () => {
+  const day = shortDay(), stuck = sleep(at(0, 18, 0), null, 'nap')
+  assert.equal(engine(OISIN, [...day, stuck], at(0, 19, 26)).phase(), 'nap')
+  const late = engine(OISIN, [...day, stuck], at(0, 21, 5))
+  assert.equal(late.phase(), 'night')
+  assert.equal(hero(late).sub, 'Down for the night at 6pm.')
+  assert.equal(mainAction(engine(OISIN, [...day, stuck], at(1, 7, 0))).kind, 'ask')
+  // Ended in the morning by the older version, it is still the night, and the day keeps its naps.
+  const next = [...day, sleep(at(0, 18, 0), at(1, 7, 0), 'nap'), sleep(at(1, 7, 0), at(1, 7, 0), 'night', true), sleep(at(1, 9, 30), at(1, 10, 30), 'nap')]
+  const w = weekOf(engine(OISIN, next, at(1, 11, 0)))
+  assert.deepEqual(w.empty ? [] : w.rows.map((r) => r.text), ['1 h', '1 h 46 min'])
+  // A long afternoon nap and a late nap that ended by bedtime stay naps.
+  assert.equal(asLogged(OISIN, sleep(at(0, 13, 0), at(0, 16, 10), 'nap')).kind, 'nap')
+  assert.equal(asLogged(OISIN, sleep(at(0, 17, 30), at(0, 18, 15), 'nap')).kind, 'nap')
 })

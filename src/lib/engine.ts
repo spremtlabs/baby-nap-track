@@ -50,6 +50,9 @@ export type Baby = {
   windows?: (number | null)[] | null
   // The parent set the day sleep aim. Until then it follows the last week of nights, from 1.0.23.
   aimSet?: boolean
+  // Stretches with no nap logged that the parent said held no nap, from 1.0.28. Today's list and
+  // the day's graph stop asking about them. It rides here so a shared log carries the answer.
+  noNap?: [number, number][] | null
 }
 
 export type Route = 'sooner' | 'bed'
@@ -143,17 +146,39 @@ export const dayAt = (t: number, h: number, m: number) => { const d = new Date(t
 export const atMins = (t: number, mins: number) => dayAt(t, Math.floor(mins / 60), mins % 60)
 const parseDay = (s: string) => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).getTime() }
 
-// A sleep added by hand is a nap or a night by when it started. Up to version 1.0.4 it went by the
-// clock when it was typed in, so a morning nap added after bedtime was saved as a night.
-export const kindFor = (baby: Baby, s: number): Kind => { const m = hourOf(s) * 60; return m >= baby.wake - 90 && m < baby.bed - 30 ? 'nap' : 'night' }
+// The stretch of a logged night that ended in the three hours before `t`, when nothing else was
+// logged in between. A morning typed in without its night is no such stretch.
+const NIGHT_ON = 3 * HOUR
+function nightBefore (baby: Baby, log: Sleep[], t: number): Sleep | null {
+  const done = readLog(baby, log).filter((x) => x.e != null && x.e <= t)
+  const p = done.length ? done.reduce((a, x) => (x.e! > a.e! ? x : a)) : null
+  return p && p.kind === 'night' && !isMark(p) && t - p.e! <= NIGHT_ON ? p : null
+}
+
+// A sleep added by hand or typed, as it goes in the log. It is a nap or a night by when it started.
+// Up to version 1.0.4 it went by the clock when it was typed in, so a morning nap added after
+// bedtime was saved as a night. From 1.0.28 a sleep that starts before the usual wake-up carries on
+// the night logged before it: the baby went back down, and up for the day moves to when this sleep
+// ends. Up to 1.0.27 a baby awake from 5 to 6am and asleep again until 7:30 was up for the day at 5
+// with a nap at 6.
+export function newSleep (baby: Baby, log: Sleep[], s: number, e: number | null): { kind: Kind; up: boolean } {
+  const m = hourOf(s) * 60, p = m < baby.wake ? nightBefore(baby, log, s) : null
+  const kind: Kind = m < baby.wake - 90 || m >= baby.bed - 30 || p ? 'night' : 'nap'
+  return { kind, up: !!p && !!p.up && e != null }
+}
+export const kindFor = (baby: Baby, s: number, log: Sleep[] = []): Kind => newSleep(baby, log, s, null).kind
 
 // How a saved sleep is read. A night that started an hour or more into the day and was over by
 // bedtime is a nap that went in as a night, so it is counted as the nap it was. That brings back
-// the morning naps 1.0.4 saved as nights, and a nap started in the hour before bedtime.
-export const asLogged = (baby: Baby, x: Sleep): Sleep =>
-  x.kind === 'night' && !x.up && x.e != null && napHours(baby, x.s) && x.e <= atMins(x.s, baby.bed)
-    ? { ...x, kind: 'nap' }
-    : x
+// the morning naps 1.0.4 saved as nights, and a nap started in the hour before bedtime. From 1.0.28
+// it goes the other way too: a nap that started in the two hours before bedtime, or after it, and
+// ran three hours or more is the night. Up to 1.0.27 a tap on the timer for an early bedtime went in
+// as a nap, and the week counted the whole night as day sleep. `now` reads one still going.
+export const asLogged = (baby: Baby, x: Sleep, now?: number): Sleep => {
+  if (x.kind === 'night' && !x.up && x.e != null && napHours(baby, x.s) && x.e <= atMins(x.s, baby.bed)) return { ...x, kind: 'nap' }
+  const e = x.e ?? now
+  return x.kind === 'nap' && e != null && e - x.s >= 3 * HOUR && x.s >= atMins(x.s, baby.bed - 120) ? { ...x, kind: 'night' } : x
+}
 
 // From an hour after the usual wake-up to an hour before bedtime, a sleep that starts is a nap.
 export const napHours = (baby: Baby, t: number) => t >= atMins(t, baby.wake + 60) && t < atMins(t, baby.bed - 60)
@@ -161,9 +186,16 @@ export const napHours = (baby: Baby, t: number) => t >= atMins(t, baby.wake + 60
 // The log as the app reads it, oldest first. A night with a nap straight after it ended the night,
 // so its last waking is up for the day even when nobody tapped it, and that day keeps its naps.
 // A tap of the timer to add a nap is left out until its times are set.
-export function readLog (baby: Baby, log: Sleep[]): Sleep[] {
-  const v = log.filter((x) => !x.deleted).map((x) => asLogged(baby, x)).filter((x) => !isTap(x)).sort((a, b) => a.s - b.s)
-  return v.map((x, i) => (x.kind === 'night' && !x.up && x.e != null && v[i + 1]?.kind === 'nap' ? { ...x, up: true } : x))
+// A stretch of night that starts within three hours of up for the day carries the night on, so that
+// wake-up was a waking, from 1.0.28.
+export function readLog (baby: Baby, log: Sleep[], now?: number): Sleep[] {
+  const v = log.filter((x) => !x.deleted).map((x) => asLogged(baby, x, now)).filter((x) => !isTap(x)).sort((a, b) => a.s - b.s)
+  const on = (x: Sleep, n?: Sleep) => !!n && n.kind === 'night' && !isMark(n) && !isMark(x) && n.s >= x.e! && n.s - x.e! <= NIGHT_ON
+  return v.map((x, i) => {
+    if (x.kind !== 'night' || x.e == null) return x
+    if (x.up) return on(x, v[i + 1]) ? { ...x, up: false } : x
+    return v[i + 1]?.kind === 'nap' ? { ...x, up: true } : x
+  })
 }
 
 export function ageWeeks (baby: Baby, t: number) { return (t - parseDay(baby.due || baby.born)) / (7 * DAY) }
@@ -227,7 +259,7 @@ export type Phase = 'day' | 'nap' | 'night' | 'waking'
 export type Engine = ReturnType<typeof engine>
 
 export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null = null) {
-  const sleeps = readLog(baby, log)
+  const sleeps = readLog(baby, log, now)
   const taps = log.filter((x) => !x.deleted).map((x) => asLogged(baby, x)).filter((x) => isTap(x) && x.s >= now - DAY).sort((a, b) => a.s - b.s)
   const ageAt = (t: number) => ageWeeks(baby, t)
 
@@ -531,6 +563,21 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     return c.s < t && t - now <= 3 * HOUR ? t : null
   }
 
+  /* What a sleep that starts now is, read at the tap on the timer. Bedtime is the night from an hour
+     before its window opens, and from 1.0.28 that holds for the early bedtime the screen gives when
+     the day's naps fell short, and from half an hour before a bedtime brought forward. Up to 1.0.27 a
+     baby put down at 6pm for an early bedtime of 6:30 was logged as napping. Before the usual
+     wake-up a sleep carries on the night logged before it, and `back` says so. */
+  function startKind (): { kind: Kind; back: boolean } {
+    const ph = phase(), m = hourOf(now) * 60
+    if (ph === 'waking') return napHours(baby, now) ? { kind: 'nap', back: false } : { kind: 'night', back: true }
+    if (ph !== 'day') return { kind: kindFor(baby, now, sleeps), back: false }
+    const known = !dayStart().unknown, p = known ? plan()[0] : undefined, mk = known ? makeUp() : null
+    const bedS = mk && mk.kind === 'late' ? mk.early - 15 * MIN : p && p.bed ? p.s : null
+    if ((bedS != null && now >= bedS - HOUR) || now >= budget().bedT - 30 * MIN || m >= baby.bed - 30 || m < baby.wake - 150) return { kind: 'night', back: false }
+    return m < baby.wake && nightBefore(baby, sleeps, now) ? { kind: 'night', back: true } : { kind: 'nap', back: false }
+  }
+
   /* The naps still to come today, with how long to aim for in each. */
   function planNaps (): { w?: Window; mk?: MakeUp; aim: number }[] {
     const ph = phase()
@@ -583,7 +630,10 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
     let t = t0
     for (const x of naps) { if (x.s - t > lim) found.push([t, x.s]); t = x.e ?? now }
     if (t1 != null && t1 - t > lim + 30 * MIN) found.push([t, t1])
-    return found
+    // A stretch the parent said held no nap is not asked about again, while it stays inside the
+    // stretch they answered for.
+    const no = baby.noNap ?? []
+    return found.filter(([a, z]) => !no.some(([na, nz]) => na <= a + MIN && nz >= z - MIN))
   }
 
   // Dark from the bedtime window until the baby is up for the day.
@@ -598,12 +648,17 @@ export function engine (baby: Baby, log: Sleep[], now: number, out: Out | null =
   return {
     baby, sleeps, now, out,
     taps: () => taps,
-    cur, phase, dayStart, unknownMorning, napsSince, nightSegs, bedOf, pastDays, napLen, plan, planNormal, shortNap, lastWake, budget, makeUp, wakeAt, planNaps, theme, morning,
+    cur, phase, dayStart, unknownMorning, napsSince, nightSegs, bedOf, pastDays, napLen, plan, planNormal, shortNap, lastWake, budget, makeUp, wakeAt, planNaps, theme, morning, startKind,
     activeOut, outPlan, nightDay, gapsIn, lastNight, aim, fewer, windowOf,
     band: () => bandFor(baby, ageAt(now)),
     age: () => ageAt(now),
   }
 }
+
+// The parent's answer that a stretch held no nap, added to the ones kept. Answers older than three
+// days are dropped, since the list only asks about today and the day just gone.
+export const withNoNap = (baby: Baby, a: number, z: number, now: number): [number, number][] =>
+  [...(baby.noNap ?? []).filter((x) => x[1] > now - 3 * DAY && !(x[0] === a && x[1] === z)), [a, z]]
 
 // This morning's wake-up put in the log. The last stretch of the night ends then, or a mark goes in
 // when the night was not logged. With `from`, the night's start typed with it, the first stretch

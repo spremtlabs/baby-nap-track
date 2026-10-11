@@ -11,6 +11,8 @@ const ymd = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-$
 // the day sleep aim, so it stays at 3 hours for the tests.
 export const OISIN: Baby = { name: 'Oisín', born: ymd(T0 - 188 * DAY), due: '', wake: 420, bed: 1140, target: 180, aimSet: true }
 export const CIAN: Baby = { name: 'Cian', born: ymd(T0 - 76 * DAY), due: '', wake: 420, bed: 1200, target: 300, aimSet: true }
+// Oisín at five months: three naps a day with shorter wake windows, and 4 hours of day sleep.
+export const AT_FIVE_MONTHS: Baby = { ...OISIN, born: ymd(T0 - 154 * DAY), target: 240 }
 
 function rng (seed: number) {
   return () => {

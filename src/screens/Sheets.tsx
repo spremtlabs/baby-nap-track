@@ -4,7 +4,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Linking from 'expo-linking'
 import { useEffect, useState } from 'react'
 import { Pressable, Share as ShareSheet, TextInput, View } from 'react-native'
-import { MIN, ageText, asLogged, band, bandFor, dayAt, engine, kindFor, morningAt, moveStart, pickEnd, pickStart, type Out, type Sleep } from '../lib/engine.ts'
+import { MIN, ageText, asLogged, band, bandFor, dayAt, engine, kindFor, morningAt, moveStart, newSleep, pickEnd, pickStart, type Out, type Sleep } from '../lib/engine.ts'
 import { chairEarly, chairLine } from '../lib/chair.ts'
 import { EmailSettings } from './Email.tsx'
 import { aimNote, clampOut, napDraft, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outDraft, outView, savedLine, windowsNote, type NightDraft, type Row } from '../lib/model.ts'
@@ -272,20 +272,22 @@ export function EditSheet ({ open, sleep, onClose, onToast }: { open: boolean; s
   useEffect(() => {
     if (!open || !sleep) return
     const fresh = !st.state.sleeps.some((x) => x.id === sleep.id), baby = st.state.baby
-    setEd(baby ? (fresh ? { ...sleep, kind: kindFor(baby, sleep.s) } : asLogged(baby, { ...sleep })) : { ...sleep })
+    setEd(baby ? (fresh ? { ...sleep, kind: kindFor(baby, sleep.s, st.state.sleeps) } : asLogged(baby, { ...sleep }, Date.now())) : { ...sleep })
     setIsNew(fresh); setAuto(fresh)
   }, [open, sleep])
   if (!ed) return null
   const change = (x: Sleep) => {
     if (x.kind !== ed.kind) { setAuto(false); setEd(x); return }
-    setEd(auto && x.s !== ed.s && st.state.baby ? { ...x, kind: kindFor(st.state.baby, x.s) } : x)
+    setEd(auto && x.s !== ed.s && st.state.baby ? { ...x, kind: kindFor(st.state.baby, x.s, st.state.sleeps) } : x)
   }
   return (
     <Sheet open={open} onClose={onClose}>
       <T w="bold" size={22} style={{ marginBottom: 14 }}>{isNew ? 'Add a sleep' : 'Edit sleep'}</T>
       <SleepForm ed={ed} onChange={change} log />
       <Button label="Save" disabled={!sleepOk(ed)} style={{ marginTop: 18 }} onPress={() => {
-        const row = { ...ed, up: ed.kind === 'night' ? ed.up : false }
+        // A new stretch that carries the night on past a wake-up ends with the baby up for the day.
+        const on = isNew && ed.kind === 'night' && !!st.state.baby && newSleep(st.state.baby, st.state.sleeps, ed.s, ed.e).up
+        const row = { ...ed, up: ed.kind === 'night' ? on || ed.up : false }
         st.saveSleep(row); onClose()
         const E = st.E, ph = E?.phase(), nx = E && ph === 'day' && !E.dayStart().unknown ? E.plan()[0] : null
         if (isNew && row.kind === 'nap' && row.e != null && (ph === 'night' || ph === 'waking')) onToast(`Added the nap from ${range(row.s, row.e, ' to ')}.`)
@@ -472,6 +474,8 @@ export function TypedSheet ({ open, onClose, onToast }: { open: boolean; onClose
   if (!baby) return null
   const now = Date.now(), r = typed(text, baby, st.state.sleeps, now, fixes)
   const fix = (i: number, x: TypedRow | null) => setFixes({ ...fixes, [i]: x })
+  // A typed sleep carries what it goes in the log as; the nap the timer was running is a nap.
+  const kindOf = (x: (typeof r.rows)[number]) => (x.k === 'sleep' && x.kind ? x.kind : x.k === 'wake' ? 'night' : kindFor(baby, x.s))
   const shown = r.rows.map((x) => {
     const e = x.k === 'end' ? x.t : x.k === 'sleep' ? x.e : null
     // The night typed with its start shows as Today's list will show it.
@@ -480,14 +484,14 @@ export function TypedSheet ({ open, onClose, onToast }: { open: boolean; onClose
       : x.k === 'wake' || (x.k === 'end' && x.night)
       ? { at: x.t, mark: 'edge', title: 'Woke up', right: fmt(x.t) }
       : e == null
-        ? { at: x.s, mark: 'done', title: kindFor(baby, x.s) === 'nap' ? 'Napping' : 'Asleep', sub: `since ${fmt(x.s)}`, right: dur(now - x.s) }
-        : { at: x.s, mark: 'done', title: kindFor(baby, x.s) === 'nap' ? 'Nap' : 'Night', sub: range(x.s, e, ' to '), right: dur(e - x.s) }
+        ? { at: x.s, mark: 'done', title: kindOf(x) === 'nap' ? 'Napping' : 'Asleep', sub: `since ${fmt(x.s)}`, right: dur(now - x.s) }
+        : { at: x.s, mark: 'done', title: kindOf(x) === 'nap' ? 'Nap' : x.k === 'sleep' && x.up ? 'Back asleep' : 'Night', sub: range(x.s, e, ' to '), right: dur(e - x.s) }
     return { row, x }
   })
   // A wake-up opens the time; a sleep, the ended nap among them, opens the nap's two times.
   const change = (x: (typeof r.rows)[number]) => (x.k === 'wake' || (x.k === 'end' && x.night)
     ? () => setWoke({ i: x.i, p: x.p, t: x.t, from: x.k === 'wake' ? x.from : undefined })
-    : () => { const e = x.k === 'end' ? x.t : x.e; setEd({ i: x.i, p: x.p, x: { id: 'typed', s: x.s, e, kind: kindFor(baby, x.s), updatedAt: now } }) })
+    : () => { const e = x.k === 'end' ? x.t : x.e; setEd({ i: x.i, p: x.p, x: { id: 'typed', s: x.s, e, kind: kindOf(x), updatedAt: now } }) })
   // Save sits under the box at the bottom of the phone, however much was typed.
   const save = <Button label="Save" disabled={!r.rows.length} onPress={() => { const next = st.saveTyped(r); onClose(); onToast(savedLine(next, st.gate)) }} />
   return (

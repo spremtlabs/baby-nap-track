@@ -1,5 +1,5 @@
 // The parent's email, asked in setup and kept in Settings, so we can send sleep tips. It goes
-// to the Astera Supabase project through sleep_signup in supabase/signups.sql, which can only add
+// to a Supabase project through sleep_signup in supabase/signups.sql, which can only add
 // an address, never read one back. Added 9 October 2026.
 const URL = 'https://eynuujdjarqnwkjofrpw.supabase.co/rest/v1/rpc/sleep_signup'
 const KEY = 'sb_publishable_u1X1QV-qny9l9YvnVvGvog_xQ8dw1Tm'

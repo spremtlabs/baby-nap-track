@@ -1,6 +1,5 @@
-// The two palettes from mock v4. Honey marks the window to put the baby down, and since the plan
-// around v1 mock it also marks the time out and a stretch with no nap logged,
-// sleep is indigo, the button is ink. Night runs from the bedtime window until he is up.
+// The two palettes. Honey marks the window to put the baby down, the time out on a plan for going
+// out and a stretch with no nap logged, sleep is indigo, the button is ink. Night runs from the bedtime window until he is up.
 export type Theme = {
   name: 'day' | 'night'
   bg: string; ink: string; muted: string; line: string; soft: string

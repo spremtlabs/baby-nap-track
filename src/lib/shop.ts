@@ -7,8 +7,8 @@ import { DAY } from './engine.ts'
 export const SKU = 'snug_lifetime'
 export const FREE_DAYS = 7
 
-// The free week on an iPhone. Apple's guideline 3.1.1 lets an app without a subscription give a free
-// trial only as a free non-consumable named for its length, which the person taps to start. In App
+// The free week on an iPhone. The App Store takes a free trial from an app without a subscription
+// only as a free non-consumable named for its length, which the person taps to start. In App
 // Store Connect this item is called `7-day Trial`. Android's free week starts on its own, as before.
 export const TRIAL_SKU = 'snug_trial'
 export const TRIAL_NAME = '7-day Trial'
@@ -55,7 +55,7 @@ function lastDay (until: number, now: number) {
   return new Date(last).toLocaleDateString('en-IE', { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-// `Wednesday 14 October`, as the mock writes it. Each part is asked for on its own, because some
+// The day written `Wednesday 14 October`. Each part is asked for on its own, because some
 // phones put a comma after the day's name when they are asked for all three at once.
 const spokenDay = (t: number) => {
   const d = new Date(t)
@@ -97,7 +97,7 @@ export function offerHero (price: string) {
   return { heading: `Nap times are free for ${FREE_DAYS}\u00a0days`, sub: `You get each nap time and the plan for the rest of the day. After that, they're ${price}, once. Logging stays free.`, buy: 'Start my free week' }
 }
 
-// The last setup screen on an iPhone, from mock iphone-trial-and-counts v1. It says how long the free
+// The last setup screen on an iPhone. It says how long the free
 // week runs, what stops after it and what it costs, before the parent taps.
 export function weekScreen (price: string, now: number) {
   return {

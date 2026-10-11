@@ -99,12 +99,12 @@ pull request here runs it too.
 
 ## Where the data goes
 
-Each phone keeps its own log. A shared log, the help chat and the email box in setup go to Spremt
-Labs' Supabase project in the EU, and the key in the code is the public one every copy of the app
-carries. This copy of the code sends no usage counts.
+Each phone keeps its own log. A shared log and the email box in setup go to Spremt Labs' Supabase
+project in the EU, and the key in the code is the public one every copy of the app carries. This
+copy of the code sends no usage counts, and its help chat sends nothing.
 
-If you publish your own build, point `src/lib/sync.ts`, `src/lib/chat.ts` and `src/lib/signup.ts`
-at a Supabase project of your own, and run the two files in `supabase/` there.
+If you publish your own build, point `src/lib/sync.ts` and `src/lib/signup.ts` at a Supabase project
+of your own, run the two files in `supabase/` there, and give `src/lib/chat.ts` your own chat.
 
 ## Contributing
 

@@ -1,6 +1,6 @@
 /// <reference types="node" />
-// The cases walked through on 4 October 2026, run against the real
-// engine. A screen that says something else fails here before it reaches a phone.
+// What Today says, run against the real engine since 4 October 2026. A screen that says
+// something else fails here before it reaches a phone.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { afterAt, asLogged, dayFloor, engine, HOUR, kindFor, lastAt, MIN, morningAt, moveStart, pickEnd, pickStart, type Sleep } from '../src/lib/engine.ts'
@@ -35,7 +35,7 @@ test('a missed window says now, and the car or the buggy, while naps are still t
   assert.equal(late.big, '1 h 57 min')
 })
 
-test('her 4pm example: the whole amount he still needs, now', () => {
+test('at 4pm after a short day: the whole amount he still needs, now', () => {
   const s = screen(week(true), at(0, 16, 0))
   assert.equal(s.eyebrow, 'Nap needed now')
   assert.equal(s.big, '1 h 5 min')
@@ -214,7 +214,7 @@ test('a sleep changed on the clock never runs past a day, and a real sleep keeps
 })
 
 // 4 October 2026: the timer looked stopped after the tap. The count was
-// in whole minutes and said 1 min for over a minute after the tap. Mock v6 counts the seconds.
+// in whole minutes and said 1 min for over a minute after the tap. It counts the seconds.
 test('a running sleep counts the seconds from 0 min 00 sec, on one line', () => {
   assert.equal(plain(runParts(0).parts), '0 min 00 sec')
   assert.equal(plain(runParts(4 * MIN + 7000).parts), '4 min 07 sec')
@@ -327,8 +327,8 @@ test('on an iPhone the payment lines name the App Store and an Apple Account, an
   for (const o of ['owned', 'pending', 'cancelled', 'failed', 'restored', 'none', 'unreachable'] as const) assert.doesNotMatch(outcomeLine(o, 'apple'), /Google|Play/)
 })
 
-// Apple's guideline 3.1.1: on an iPhone the free week is the free `7-day Trial` item, started by the
-// parent's tap. Mock iphone-trial-and-counts v1. Until the tap the nap times wait, as they do once the
+// On an iPhone the free week is the free `7-day Trial` item, started by the
+// parent's tap. Until the tap the nap times wait, as they do once the
 // week is up, and Android's week still starts by itself.
 test('on an iPhone the free week waits for the tap on the 7-day Trial item', () => {
   assert.equal(TRIAL_SKU, 'snug_trial')
@@ -363,8 +363,8 @@ test('a parent who said Not now logs as before, and Today offers the free week w
   assert.equal(box?.restore, true)
 })
 
-test('the last setup screen on an iPhone says the words of the mock, with the last free day', () => {
-  // Mock v1 was drawn on Wednesday 7 October 2026, and its week runs to the end of the 14th.
+test('the last setup screen on an iPhone says how long the week runs, with the last free day', () => {
+  // On Wednesday 7 October 2026 the week runs to the end of the 14th.
   const now = new Date(2026, 9, 7, 8, 41).getTime()
   const w = weekScreen(PRICE, now)
   assert.equal(w.eyebrow, 'Nap times free for')

@@ -1,5 +1,5 @@
-/* What a parent types about the morning, read on the phone into the wake-up and the sleeps. From
-   mock type-what-happened v1, 11 October 2026. The words are never sent anywhere.
+/* What a parent types about the day, read on the phone into the wake-up and the sleeps, from
+   11 October 2026. The words are never sent anywhere.
 
    Each piece between commas is one thing that happened, and `and` before two times starts a new
    piece. A piece with two times is a sleep, unless a wake word comes first: then the baby was up

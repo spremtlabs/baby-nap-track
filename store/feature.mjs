@@ -1,10 +1,10 @@
 // Draws store/feature.html into store/assets/feature-1024x500.png, Play's feature graphic.
 // Run: node store/feature.mjs
-import { existsSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-const PUPPETEER = [process.env.CHECK_PUPPETEER, ...['astera', 'astera-anatomy', 'astera-arrival', 'astera-companion'].map((d) => `${process.env.HOME}/dev/${d}/node_modules/puppeteer/lib/puppeteer/puppeteer.js`), 'node_modules/puppeteer/lib/puppeteer/puppeteer.js'].find((p) => p && existsSync(p))
+const PUPPETEER = [process.env.CHECK_PUPPETEER, ...(existsSync(`${process.env.HOME}/dev`) ? readdirSync(`${process.env.HOME}/dev`) : []).map((d) => `${process.env.HOME}/dev/${d}/node_modules/puppeteer/lib/puppeteer/puppeteer.js`), 'node_modules/puppeteer/lib/puppeteer/puppeteer.js'].find((p) => p && existsSync(p))
 const { default: puppeteer } = await import(pathToFileURL(resolve(PUPPETEER)).href)
 const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox', '--allow-file-access-from-files'] })
 const page = await browser.newPage()

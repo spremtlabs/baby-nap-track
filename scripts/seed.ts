@@ -40,7 +40,7 @@ export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1
     const sleeps = [...week().slice(0, -1), sleep(at(0, 8, 58), at(0, 9, 25), 'nap')]
     return { state: JSON.stringify({ baby: OISIN, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 9, 40) }
   }
-  // The chair method from mock chair-method v4. Night 4 at 6:50pm with bedtime at 7, three nights
+  // The chair method. Night 4 at 6:50pm with bedtime at 7, three nights
   // settled beside the cot; or the morning after night 4, with four nights settled.
   if (scenario === 'chair' || scenario === 'chair-morning') {
     const ago = scenario === 'chair' ? 3 : 4, mins = [46, 38, 24, 31].slice(0, ago)

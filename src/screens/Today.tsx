@@ -221,7 +221,7 @@ const WaysCard = ({ ways, onPick }: { ways: Ways; onPick: (id: Route) => void })
 const FewerCard = ({ fewer, onPick }: { fewer: Fewer; onPick: (id: 'fewer' | 'keep') => void }) => <Choices id="fewer" say={fewer.say} opts={fewer.opts} onPick={onPick} />
 
 // Under the timer while a nap runs late: the time to wake the baby so the naps end when the
-// parent set them to, from mock sleep-approach v3.
+// parent set them to.
 function WakeCard ({ w, name }: { w: NonNullable<ChairHero['wake']>; name: string }) {
   const t = useTheme()
   return (

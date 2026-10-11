@@ -4,7 +4,7 @@
 // the top of Settings. `npm run check` first, so dist/ is
 // the current build.
 // Run: node store/shots.mjs, or node store/shots.mjs --apple
-import { existsSync, mkdirSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -14,7 +14,7 @@ const apple = process.argv.includes('--apple')
 const out = apple ? 'store/assets/app-store' : 'store/assets'
 const size = apple ? { width: 430, height: 932 } : { width: 360, height: 640 }
 mkdirSync(out, { recursive: true })
-const PUPPETEER = [process.env.CHECK_PUPPETEER, ...['astera', 'astera-anatomy', 'astera-arrival', 'astera-companion'].map((d) => `${process.env.HOME}/dev/${d}/node_modules/puppeteer/lib/puppeteer/puppeteer.js`), 'node_modules/puppeteer/lib/puppeteer/puppeteer.js'].find((p) => p && existsSync(p))
+const PUPPETEER = [process.env.CHECK_PUPPETEER, ...(existsSync(`${process.env.HOME}/dev`) ? readdirSync(`${process.env.HOME}/dev`) : []).map((d) => `${process.env.HOME}/dev/${d}/node_modules/puppeteer/lib/puppeteer/puppeteer.js`), 'node_modules/puppeteer/lib/puppeteer/puppeteer.js'].find((p) => p && existsSync(p))
 const { default: puppeteer } = await import(pathToFileURL(resolve(PUPPETEER)).href)
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.ttf': 'font/ttf', '.png': 'image/png', '.ico': 'image/x-icon' }
 const server = createServer((req, res) => {

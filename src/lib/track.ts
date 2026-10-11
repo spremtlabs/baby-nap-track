@@ -1,4 +1,4 @@
-// What Baby Nap Track tells PostHog, the analytics Chorus uses. Counts only: no name, no sleep times, and no
+// What Baby Nap Track tells PostHog. Counts only: no name, no sleep times, and no
 // id kept on the phone, so PostHog counts how many phones reach each step and cannot follow one
 // phone from day to day. The free week ending is `snug_free_week_ended`, sent the first time the
 // nap times lock.

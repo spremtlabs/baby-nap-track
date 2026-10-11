@@ -1,4 +1,4 @@
-// Sends Baby Nap Track's events to PostHog's servers in the EU, into the Spremt Labs project Chorus uses,
+// Sends Baby Nap Track's events to PostHog's servers in the EU, into a Spremt Labs project,
 // each marked `product: snug`. The project throws away IP addresses. Each run of the app makes a
 // random id that is never saved, so PostHog builds no profile of anyone. The web build sends
 // nothing; it keeps the events on the page for the gate to read. The token here is the public one
@@ -11,10 +11,10 @@ import { Platform } from 'react-native'
 import { IPHONE } from './phone.ts'
 import { NO_SOURCE, parseReferrer, type Event, type Source } from './track.ts'
 
-// On an iPhone Baby Nap Track asks before it sends a single count, for Apple's guideline 5.1.1(ii), and sends
+// On an iPhone Baby Nap Track asks before it sends a single count, and sends
 // nothing until the parent says yes in setup or turns the switch on in Settings. Android sends the
-// counts as it always has. Mock iphone-trial-and-counts v1 draws the question for Android too, for
-// EU law. Android gets it in a release of its own, by changing this one line.
+// counts as it always has. Android can ask the same question in a release of its own, by changing
+// this one line.
 export const ASK_COUNTS = IPHONE
 let allowed = !ASK_COUNTS
 

@@ -1,6 +1,6 @@
 /// <reference types="node" />
-// Type what happened, from mock type-what-happened v1 of 11 October 2026, run against the real
-// engine with the sample baby on the morning the mock drew: last night not logged, 8:25am.
+// Type what happened, from 11 October 2026, run against the real engine with the sample baby on a
+// morning with last night not logged, at 8:25am.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { engine, type Sleep } from '../src/lib/engine.ts'
@@ -15,7 +15,7 @@ const said = (text: string, t = now) => plain(readTyped(text, OISIN, t).rows)
 let n = 0
 const id = () => `t${++n}`
 
-test('the morning the mock drew: a wake-up, a feed and a nap, then Today from them', () => {
+test('a morning with the night not logged: a wake-up, a feed and a nap, then Today from them', () => {
   const r = typed('Up at 5:40, fed at 6, napped 6:10 to 7:28', OISIN, log(), now)
   assert.deepEqual(plain(r.rows), [['woke', at(1, 5, 40)], [at(1, 6, 10), at(1, 7, 28)]])
   assert.deepEqual(r.left, ['fed at 6'])

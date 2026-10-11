@@ -1,23 +1,31 @@
 // The help icon in the corner of the Today screen and the chat it opens. A person answers in the
 // same box. While the chat is open it looks for an answer every few seconds, and otherwise once a
-// minute while the app is open, with a dot on the icon when one has come in.
+// minute while the app is open, with a dot on the icon when one has come in. A note from us sits
+// above the icon once, and a tap on it opens the chat with the note as its first line.
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState, Pressable, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Path } from 'react-native-svg'
 import { NO_CHAT, loadChat, poll, saveChat, send, sendEmail, type ChatState, type Line } from '../lib/chat.ts'
+import { NOTE, firstDayFor, noteDue, opening } from '../lib/note.ts'
+import { dayKey } from '../lib/track.ts'
 import { Pill, Sheet, T, useTheme } from '../ui/kit.tsx'
 
 const OPEN_POLL = 5000
 const SHUT_POLL = 60000
 
-export function useChat () {
+// `ready` is the log loaded from the phone, and `hasBaby` is setup done.
+export function useChat (ready: boolean, hasBaby: boolean) {
   const [c, setC] = useState<ChatState>(NO_CHAT)
+  const [loaded, setLoaded] = useState(false)
   const [open, setOpen] = useState(false)
   const ref = useRef(c)
   ref.current = c
-  useEffect(() => { loadChat().then(setC) }, [])
+  useEffect(() => { loadChat().then((x) => { setC(x); setLoaded(true) }) }, [])
   const put = useCallback((fn: (c: ChatState) => ChatState) => setC((prev) => { const next = fn(prev); saveChat(next); return next }), [])
+  const today = dayKey(Date.now())
+  useEffect(() => { if (loaded && ready && c.firstDay == null) put((cur) => ({ ...cur, firstDay: firstDayFor(hasBaby, today) })) }, [loaded, ready, c.firstDay, hasBaby, today, put])
+  const note = loaded && ready && noteDue(c, hasBaby, today)
 
   const check = useCallback(async () => {
     const { token, lastId } = ref.current
@@ -40,8 +48,26 @@ export function useChat () {
     return () => clearInterval(id)
   }, [c.token, open, check])
 
-  const show = () => { setOpen(true); put((cur) => ({ ...cur, unread: false })) }
-  return { c, put, open, show, hide: () => setOpen(false) }
+  // Opening the chat counts as seeing the note. Closing the note leaves the dot on the icon.
+  const show = () => { setOpen(true); put((cur) => ({ ...cur, unread: false, noted: cur.noted || noteDue(cur, hasBaby, today) })) }
+  const dismiss = () => put((cur) => ({ ...cur, noted: true, unread: true }))
+  return { c, put, open, show, hide: () => setOpen(false), note, dismiss }
+}
+
+export function ChatNote ({ onPress, onClose }: { onPress: () => void; onClose: () => void }) {
+  const t = useTheme(), insets = useSafeAreaInsets()
+  return (
+    <View style={{ position: 'absolute', right: 18, bottom: 82 + insets.bottom, maxWidth: 306, flexDirection: 'row', backgroundColor: t.btn, borderRadius: 18, borderBottomRightRadius: 5, shadowColor: '#0E1222', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 6 }}>
+      <Pressable testID="chat-note" accessibilityRole="button" onPress={onPress} style={({ pressed }) => ({ flex: 1, paddingVertical: 15, paddingLeft: 18, paddingRight: 6, opacity: pressed ? 0.8 : 1 })}>
+        <T size={15.5} color={t.btnInk} style={{ lineHeight: 22 }}>{NOTE}</T>
+      </Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="Close the note" onPress={onClose} hitSlop={10} style={{ paddingTop: 13, paddingRight: 13, paddingLeft: 6 }}>
+        <Svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke={t.btnInk} strokeWidth={2.4} strokeLinecap="round">
+          <Path d="M5 5l14 14M19 5L5 19" />
+        </Svg>
+      </Pressable>
+    </View>
+  )
 }
 
 export function ChatButton ({ unread, onPress }: { unread: boolean; onPress: () => void }) {
@@ -95,7 +121,7 @@ export function ChatSheet ({ chat }: { chat: ReturnType<typeof useChat> }) {
       </View>
       <T size={14.5} color={t.muted} style={{ marginBottom: 16 }}>A person reads every message.</T>
       <View style={{ gap: 10, marginBottom: 16 }}>
-        <Bubble line={{ from: 'us', body: "Hi! Ask us anything about Baby Nap Track and we'll answer here." }} />
+        <Bubble line={{ from: 'us', body: opening(c) }} />
         {c.lines.map((l, i) => <Bubble key={i} line={l} />)}
       </View>
       {askEmail ? (

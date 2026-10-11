@@ -8,7 +8,7 @@ export const at = (d: number, h: number, m = 0) => { const x = new Date(T0); x.s
 const ymd = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}` }
 
 // Born so that he is six months old, three naps a day, whatever day the tests run. Both parents set
-// the day sleep aim, so it stays where the cases walked through on 4 October 2026 had it.
+// the day sleep aim, so it stays at 3 hours for the tests.
 export const OISIN: Baby = { name: 'Oisín', born: ymd(T0 - 188 * DAY), due: '', wake: 420, bed: 1140, target: 180, aimSet: true }
 export const CIAN: Baby = { name: 'Cian', born: ymd(T0 - 76 * DAY), due: '', wake: 420, bed: 1200, target: 300, aimSet: true }
 
@@ -24,7 +24,7 @@ function rng (seed: number) {
 let n = 0
 const mk = (s: number, e: number | null, kind: 'nap' | 'night', up = false): Sleep => ({ id: `s${++n}`, s, e, kind, up, updatedAt: 1 })
 
-// The same week mock v4 drew. A short day has three short naps and ends at 4pm.
+// A week of sleep. A short day has three short naps and ends at 4pm.
 export function week (shortDay = false): Sleep[] {
   const r = rng(5), j = (a: number) => Math.round((r() * 2 - 1) * a)
   const out: Sleep[] = []

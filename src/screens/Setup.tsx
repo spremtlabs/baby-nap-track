@@ -1,5 +1,5 @@
 // The first minute: the baby's name and birthday, the usual day, and this morning so far. On an
-// iPhone two screens follow, from mock iphone-trial-and-counts v1: whether Baby Nap Track may send usage
+// iPhone two screens follow: whether Baby Nap Track may send usage
 // counts, and the free week, which starts only when the parent taps it.
 import { useState } from 'react'
 import { ScrollView, TextInput, View } from 'react-native'

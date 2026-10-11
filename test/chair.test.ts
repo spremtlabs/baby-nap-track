@@ -1,5 +1,5 @@
 /// <reference types="node" />
-// The chair method from mock chair-method v4, run against the real engine: which night it is,
+// The chair method, run against the real engine: which night it is,
 // where the chair goes, the night held back, the bedtime taps, the card and the chart.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'

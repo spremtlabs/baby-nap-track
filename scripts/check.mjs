@@ -8,7 +8,7 @@
 // for a consultant printed on A4, the next morning
 // with the night not logged and then added, a phone set up on version 1.0.0, the free week, the
 // nap times locked after it, a purchase and a pending one, and a shared log paid for on the other phone.
-// Then the same web build answers as an iPhone, from mock iphone-trial-and-counts v1: the question
+// Then the same web build answers as an iPhone: the question
 // about usage counts, the free week started from the `7-day Trial` item or put off with Not now, an
 // App Store with no such item, and an Apple Account that had its week already.
 // Every walk also reads what the app would have sent PostHog: the steps of the free week, and no
@@ -20,6 +20,7 @@ import { createServer } from 'node:http'
 import { extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { seed, STORE_KEY } from './seed.ts'
+import { HELLO, NOTE } from '../src/lib/note.ts'
 
 const FAKE_PLAY_KEY = 'snug.fakeplay'
 const EVENTS_KEY = 'snug.events'
@@ -54,7 +55,8 @@ for (const p of app) {
   // The name under the icon on both phones, and the one Apple matches against the App Store name.
   if (expo.name !== 'Baby Nap Track' || expo.web?.name !== 'Baby Nap Track') fail('app.json', `the app is called ${expo.name}, and its name is Baby Nap Track`)
   if (/\bSnug\b/.test(JSON.stringify(expo))) fail('app.json', 'says Snug. The app is called Baby Nap Track.')
-  for (const f of ['store/listing.md', 'store/app-store.md']) {
+  // The store notes stay out of the open source copy, which skips these checks.
+  for (const f of ['store/listing.md', 'store/app-store.md'].filter((f) => existsSync(f))) {
     const md = readFileSync(f, 'utf8')
     if (!/^## (Title|Name)\n\nBaby Nap Track: /m.test(md)) fail(f, 'the store name does not start with Baby Nap Track')
     if (/\bSnug\b/.test(md.replace(/`[^`]*`/g, '').replace(/called Snug until/g, ''))) fail(f, 'says Snug outside a quote. The app is called Baby Nap Track.')
@@ -91,15 +93,15 @@ for (const p of app) {
   }
   // The App Store takes the sku on its own key. Without it an iPhone opens no purchase sheet.
   if (!/apple:\s*\{\s*sku:\s*SKU/.test(readFileSync('src/lib/billing.ts', 'utf8'))) fail('src/lib/billing.ts', 'the purchase asks Google Play only, so an iPhone cannot pay')
-  // Apple's guideline 3.1.1: the free week on an iPhone is a free non-consumable named for its length,
+  // The free week on an iPhone is a free non-consumable named for its length,
   // `7-day Trial`, with the product id App Store Connect holds. The app, the purchase and the steps in
   // store/app-store.md name the same item, and the purchase asks the App Store alone.
-  const shop = readFileSync('src/lib/shop.ts', 'utf8'), billing = readFileSync('src/lib/billing.ts', 'utf8'), listing = readFileSync('store/app-store.md', 'utf8')
+  const shop = readFileSync('src/lib/shop.ts', 'utf8'), billing = readFileSync('src/lib/billing.ts', 'utf8'), listing = existsSync('store/app-store.md') ? readFileSync('store/app-store.md', 'utf8') : null
   const sku = shop.match(/export const TRIAL_SKU = '([^']*)'/)?.[1], name = shop.match(/export const TRIAL_NAME = '([^']*)'/)?.[1]
   if (sku !== 'snug_trial') fail('src/lib/shop.ts', `the free week item is ${sku}, and App Store Connect holds snug_trial`)
   if (name !== '7-day Trial') fail('src/lib/shop.ts', `the free week item is called ${name}, and Apple asks for a name like 7-day Trial`)
   if (!/requestPurchase\(\{ request: \{ apple: \{ sku: TRIAL_SKU \} \}, type: 'in-app' \}\)/.test(billing)) fail('src/lib/billing.ts', 'the free week is not bought from the App Store as the TRIAL_SKU item on its own')
-  for (const w of ['`snug_trial`', '`7-day Trial`', 'Non-Consumable', 'Price: Free']) if (!listing.includes(w)) fail('store/app-store.md', `the steps for the free week item never say ${w}`)
+  for (const w of ['`snug_trial`', '`7-day Trial`', 'Non-Consumable', 'Price: Free']) if (listing != null && !listing.includes(w)) fail('store/app-store.md', `the steps for the free week item never say ${w}`)
   // Google is named only where the store's name is chosen for the phone.
   for (const p of app.filter((p) => !/src\/lib\/(shop|billing)\.ts$/.test(p))) {
     for (const m of readFileSync(p, 'utf8').replace(/\/\/.*$/gm, '').matchAll(/[`'"][^`'"\n]*\b(Google|Play)\b[^`'"\n]*[`'"]/g)) fail(p, `names Google in a line an iPhone shows: ${m[0]}`)
@@ -107,7 +109,7 @@ for (const p of app) {
 }
 
 /* 2. The web build of the real app */
-const PUPPETEER = [process.env.CHECK_PUPPETEER, ...['astera', 'astera-anatomy', 'astera-arrival', 'astera-companion'].map((d) => `${process.env.HOME}/dev/${d}/node_modules/puppeteer/lib/puppeteer/puppeteer.js`), 'node_modules/puppeteer/lib/puppeteer/puppeteer.js']
+const PUPPETEER = [process.env.CHECK_PUPPETEER, ...(existsSync(`${process.env.HOME}/dev`) ? readdirSync(`${process.env.HOME}/dev`) : []).map((d) => `${process.env.HOME}/dev/${d}/node_modules/puppeteer/lib/puppeteer/puppeteer.js`), 'node_modules/puppeteer/lib/puppeteer/puppeteer.js']
   .find((p) => p && existsSync(p))
 if (!PUPPETEER) fail('gate', 'no puppeteer to walk the app with. Set CHECK_PUPPETEER or npm i -D puppeteer.')
 
@@ -337,7 +339,7 @@ if (PUPPETEER && !fails.length) {
     await done(p)
   }
 
-  // 11 October 2026, mock type-what-happened v1: the morning typed in one line from the question.
+  // 11 October 2026: the morning typed in one line from the question.
   // Today's own Save sits behind the sheet, so the sheet's Save is the last one on the page.
   {
     const p = await open('typed', seed('tomorrow'))
@@ -691,15 +693,37 @@ if (PUPPETEER && !fails.length) {
     await done(p)
   }
 
-  // The help chat opens from the corner and says a person answers. The walk sends nothing.
+  // The help chat opens from the corner and says a person answers. The walk sends nothing. A phone
+  // that already has a baby shows the note above the icon, and the chat opens on it.
   {
     const p = await open('help', seed('morning'))
+    await expect(p, NOTE)
+    await look(p, 'note')
     await tap(p, 'Help')
     await expect(p, 'A person reads every message.')
-    await expect(p, "Ask us anything about Baby Nap Track and we'll answer here.")
+    await expect(p, NOTE)
+    if ((await text(p)).includes(HELLO)) fail('help', 'the chat opens on the old hello after the note was seen')
     await look(p, 'help')
     await tap(p, 'Close')
+    if ((await text(p)).includes(NOTE)) fail('help', 'the note is still above the icon after the chat was opened')
     await done(p)
+  }
+
+  // A tap on the note opens the chat. The cross closes the note and the chat keeps it.
+  {
+    const p = await open('note', seed('morning'))
+    await expect(p, NOTE)
+    await tap(p, NOTE)
+    await expect(p, 'A person reads every message.')
+    await tap(p, 'Close')
+    await done(p)
+    const q = await open('note-closed', seed('morning'))
+    await expect(q, NOTE)
+    await tap(q, 'Close the note')
+    if ((await text(q)).includes(NOTE)) fail('note-closed', 'the cross left the note on the screen')
+    await tap(q, 'Help')
+    await expect(q, NOTE)
+    await done(q)
   }
 
   // The 4pm example: a short day of three short naps.
@@ -766,7 +790,7 @@ if (PUPPETEER && !fails.length) {
     await done(p)
   }
 
-  // The chair method, from mock chair-method v4: night 4 at bedtime with its picture, the night
+  // The chair method: night 4 at bedtime with its picture, the night
   // held back and let go, settling, asleep, Settings, the chart the next morning, and the sheet
   // that starts it from Settings.
   {
@@ -823,7 +847,7 @@ if (PUPPETEER && !fails.length) {
     await tap(s, 'Start tonight')
     await expect(s, 'The chair method starts tonight.')
     await done(s)
-    // From 1.0.18 Settings offers it at every age. A baby of ten weeks gets the HSE's line with it.
+    // From 1.0.18 Settings offers it at every age. A baby of ten weeks gets the line about six months with it.
     const y = await open('chair-young', seed('young'))
     await tap(y, 'Settings')
     await expect(y, 'The HSE suggests it from six months.')
@@ -942,7 +966,7 @@ if (PUPPETEER && !fails.length) {
     await done(p)
   }
 
-  // An iPhone, from mock iphone-trial-and-counts v1. The pretend App Store has the price and the free
+  // An iPhone. The pretend App Store has the price and the free
   // `7-day Trial` item. Setup asks about counts after the questions about the baby, then offers the
   // free week. Nothing reaches PostHog before a yes, and the nap times wait for the free week.
   const IOS = { price: '€9.99', os: 'ios', week: true }

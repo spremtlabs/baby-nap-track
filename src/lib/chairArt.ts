@@ -1,5 +1,4 @@
-// The chair method's picture: the bedroom at night, side-on and warm, from mock chair-method v4.
-// It should feel warm, relieving and friendly. The baby sleeps on its back in
+// The chair method's picture: the bedroom at night, side-on and warm. The baby sleeps on its back in
 // a sleeping bag; the parent sits in the honey armchair at tonight's place, leaning in with a hand
 // on the baby for the first three nights, and is a dark shape in the lit doorway in the hall. The
 // other places are marks on the rug. Drawn as one SVG string so the phone and the web build show

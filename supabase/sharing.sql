@@ -1,7 +1,5 @@
--- Sharing one baby's sleep log between carers. Applied by hand with execute_sql to the Astera
--- project (eynuujdjarqnwkjofrpw), on 4 October 2026, because the free plan holds two active
--- projects and Chorus and Astera use both. Kept out of Astera's migration history on purpose,
--- so `supabase db push` in the Astera repo never meets a version it does not have.
+-- Sharing one baby's sleep log between carers. Applied by hand with execute_sql to the Supabase
+-- project eynuujdjarqnwkjofrpw on 4 October 2026, outside that project's migration history.
 --
 -- No account and no sign-in. A household is found by the hash of a long random key that only
 -- the phones holding the share link know. The tables have RLS on and no policies, and the
@@ -21,7 +19,7 @@ create table if not exists public.sleep_households (
 -- Added 4 October 2026 with the one-off payment: a log paid for on one phone is paid for on every
 -- phone in it.
 alter table public.sleep_households add column if not exists paid boolean not null default false;
-comment on table public.sleep_households is 'The baby sleep app (Snug), not Astera. One shared sleep log, found by the SHA-256 of its share key. Reached only through the sleep_ functions.';
+comment on table public.sleep_households is 'Baby Nap Track. One shared sleep log, found by the SHA-256 of its share key. Reached only through the sleep_ functions.';
 
 create table if not exists public.sleep_entries (
   household_id uuid not null references public.sleep_households(id) on delete cascade,
@@ -35,7 +33,7 @@ create table if not exists public.sleep_entries (
   server_at timestamptz not null default clock_timestamp(),
   primary key (household_id, id)
 );
-comment on table public.sleep_entries is 'The baby sleep app (Snug), not Astera. One sleep in a shared log; times are milliseconds since 1970. Reached only through the sleep_ functions.';
+comment on table public.sleep_entries is 'Baby Nap Track. One sleep in a shared log; times are milliseconds since 1970. Reached only through the sleep_ functions.';
 create index if not exists sleep_entries_pull on public.sleep_entries (household_id, server_at);
 
 alter table public.sleep_households enable row level security;

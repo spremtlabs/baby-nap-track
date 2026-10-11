@@ -1,4 +1,4 @@
-// The chair method on screen, from mock chair-method v4: the picture with the nights under it, the
+// The chair method on screen: the picture with the nights under it, the
 // card on Today at bedtime, the chart under Today's list, and the sheet that starts it.
 import { useState } from 'react'
 import { Pressable, View } from 'react-native'

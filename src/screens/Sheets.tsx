@@ -121,7 +121,7 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
         {baby.windows?.some((x) => x != null) ? <Link label="Work them all out again" onPress={() => st.setBaby({ windows: null })} style={{ marginTop: -8 }} /> : null}
       </Group>
 
-      {/* The chair method, from mock chair-method v4. Offered at every age since 1.0.18. */}
+      {/* The chair method, offered at every age since 1.0.18. */}
       <Group title="Chair method">
         {baby.chair ? (
           <>
@@ -210,8 +210,7 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
         <Note>{b.naps < ageNaps ? `On ${naps(b.naps)} a day` : `At ${ageText(baby, now)}`} most babies are ready for a nap after {span(b.min, b.max)} awake, and the time gets longer as the day goes on. Baby Nap Track starts with those times. Then it checks how long {N} was awake before each nap that went well this week and moves the times to fit. After a short nap, the next one comes sooner.</Note>
         <Note>Once 3 days are logged, the times come mostly from {N}'s own sleep.</Note>
         <Note>After {fmt(new Date(now).setHours(0, 0, 0, 0) + (napsEnd - 20) * MIN)}, Baby Nap Track suggests an earlier bedtime instead of another nap.</Note>
-        {/* Apple's guideline 1.4.1 asks an app about health to send people to a doctor as well.
-            iPhone only for now, so the Android screens stay as they are. */}
+        {/* On an iPhone the app about health sends people to a doctor as well. */}
         {IPHONE ? <Note>If you're ever worried about {N}'s sleep, have a chat with your GP or public health nurse.</Note> : null}
       </Group>
 
@@ -461,7 +460,7 @@ export function MorningSheet ({ open, mode, onClose, onToast }: { open: boolean;
   )
 }
 
-// Type what happened, from mock type-what-happened v1: the parent types or says the morning, each
+// Type what happened: the parent types or says the morning, each
 // sleep it reads shows as a row to check, and Save puts them in the log in one go.
 export function TypedSheet ({ open, onClose, onToast }: { open: boolean; onClose: () => void; onToast: (s: string) => void }) {
   const t = useTheme(), st = useStore(), baby = st.state.baby

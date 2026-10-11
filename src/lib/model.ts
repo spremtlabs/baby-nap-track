@@ -1,5 +1,5 @@
 // What each part of the Today screen says, worked out from the engine. The screens only draw
-// these, so the wording approved in mock v4 is tested here once, in plain strings.
+// these, so the wording is tested here once, in plain strings.
 import { DAY, HOUR, MIN, ageText, ageWeeks, atMins, band, bandFor, dayAt, engine, hourOf, isMark, napHours, round5, targetFor, type Baby, type Engine, type Out, type Route, type Sleep, type Window } from './engine.ts'
 import { isLocked, lockedHero, offerHero, trialNote, type Gate } from './shop.ts'
 import { bigDur, bigTime, dur, fmt, hours, range, runParts, tallyDur, times, type Part } from './words.ts'

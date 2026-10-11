@@ -1,5 +1,5 @@
 // Sharing one baby's log between phones. The log lives on each phone; when it is shared, every
-// change goes up to the Astera Supabase project and the other phones read it back. The four
+// change goes up to a Supabase project and the other phones read it back. The four
 // functions are in supabase/sharing.sql. The address and key here are the public ones.
 import type { Baby, Sleep } from './engine.ts'
 

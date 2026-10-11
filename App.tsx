@@ -21,7 +21,7 @@ import { ASK_COUNTS } from './src/lib/posthog.ts'
 import { outcomeLine, setupLine, weekLine, type Store } from './src/lib/shop.ts'
 import { StoreProvider, useStore } from './src/lib/store.tsx'
 import { keyFrom } from './src/lib/sync.ts'
-import { ChatButton, ChatSheet, useChat } from './src/screens/Chat.tsx'
+import { ChatButton, ChatNote, ChatSheet, useChat } from './src/screens/Chat.tsx'
 import { ChairSheet } from './src/screens/Chair.tsx'
 import { Setup } from './src/screens/Setup.tsx'
 import { AskSheet, DeleteSheet, EditSheet, JoinSheet, MorningSheet, NightSheet, OutSheet, SettingsSheet, TypedSheet } from './src/screens/Sheets.tsx'
@@ -56,7 +56,7 @@ function Main () {
   // A toast can offer to change what it just saved: one sleep, or the whole of last night.
   const [toast, setToast] = useState<{ text: string; edit?: string; night?: boolean } | null>(null)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const chat = useChat()
+  const chat = useChat(st.loaded, !!st.state.baby)
 
   const say = (text: string, edit?: string, night = false) => {
     setToast({ text, edit, night })
@@ -177,7 +177,8 @@ function Main () {
               onUpForDay={() => { const l = E.sleeps[E.sleeps.length - 1]; if (l) { st.endSleep(l.id, true, l.e ?? Date.now()); st.refreshNow(); say(`Up for the day at ${fmt(l.e ?? Date.now())}.`, undefined, true) } }} />
           : <Setup shopLine={setupLine(st.gate, st.now)} onJoin={() => { setJoinText(''); setOpen('join') }} onDone={async (baby, woke, naps, email) => { st.setup(baby, woke, naps); if (email.trim()) st.signUp(email, 'setup'); if (st.state.alerts) await askToRemind() }}
               askCounts={ASK_COUNTS && st.state.counts == null} onCounts={st.setCounts} offer={st.gate.kind === 'offer' ? st.gate.price : null} onWeek={startWeek} />}
-        {st.state.baby && E ? <ChatButton unread={chat.c.unread} onPress={chat.show} /> : null}
+        {st.state.baby && E && chat.note ? <ChatNote onPress={chat.show} onClose={chat.dismiss} /> : null}
+        {st.state.baby && E ? <ChatButton unread={chat.c.unread || chat.note} onPress={chat.show} /> : null}
         <Toast visible={!!toast} text={toast?.text ?? ''} action={toast?.edit || toast?.night ? 'Change' : undefined}
           onAction={() => { const id = toast?.edit, night = toast?.night; setToast(null); if (night) setOpen('night'); else if (id) openEdit(id) }} />
       </View>

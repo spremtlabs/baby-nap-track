@@ -1,6 +1,5 @@
-// The chair method, from Kim West's Good Night, Sleep Tight and the HSE's gradual retreat: the
-// parent sits by the cot until the baby is asleep, and every three nights the chair moves closer
-// to the door, from mock chair-method v4. The plan rides on the baby's details, so a shared log
+// The chair method, a gradual retreat: the parent sits by the cot until the baby is
+// asleep, and every three nights the chair moves closer to the door. The plan rides on the baby's details, so a shared log
 // carries it to every phone. Nothing in here draws or stores anything.
 import { DAY, HOUR, MIN, ageWeeks, type Baby, type Engine } from './engine.ts'
 import { mainAction, type Hero } from './model.ts'
@@ -25,8 +24,8 @@ const STAY = ['by the cot', 'halfway to the door', 'by the door', 'in the hall']
 const MOVE_TO = ['beside the cot', 'halfway to the door', 'to the door', 'into the hall']
 const NIGHTS_AT = 3
 
-// The HSE and Kim West both start it at six months. Settings offers it at every age since 1.0.18,
-// and tells a parent whose baby is younger what the HSE suggests.
+// Settings offers it at every age since 1.0.18, and tells a parent whose baby is under six months
+// that it is suggested from six months.
 export const chairEarly = (baby: Baby, now: number) => ageWeeks(baby, now) < 26
 
 const pad = (n: number) => String(n).padStart(2, '0')
@@ -116,7 +115,7 @@ export function askAbout (E: Engine, c: Chair | null | undefined, now: number): 
 const hard = (s: Settle | undefined) => !!s && (s.cry === 'lot' || !!s.why?.length)
 const latest = (c: Chair) => [...c.settles].sort((a, b) => b.asleep - a.asleep)[0]
 
-// A move night can wait one more night, as the HSE gives three or four nights at each place.
+// A move night can wait one more night, so a place can have three or four nights.
 export const hold = (c: Chair, key: string, on: boolean): Chair => ({ ...c, held: on ? [...new Set([...c.held, key])] : c.held.filter((k) => k !== key) })
 
 // The Today screen while the plan runs: settling has its own count, and at bedtime the button

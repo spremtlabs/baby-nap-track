@@ -12,6 +12,8 @@ import { reminder, sleepNotice } from './model.ts'
 import { book, clearAll, showSleep } from './notify.ts'
 import { IPHONE } from './phone.ts'
 import { ASK_COUNTS, allowCounts, flush, installSource, track } from './posthog.ts'
+import { NO_RATE, napOn, rateDue, type Rate } from './rate.ts'
+import { askForRating } from './review.ts'
 import { NO_SHOP, gate, isLocked, type Paid } from './shop.ts'
 import { NOT_TOLD, dayKey, due, toldOnLoad, type Source, type Told } from './track.ts'
 import { NoSuchLog, createLog, forgetLog, fromWire, markPaid, merge, pullLog, pushLog } from './sync.ts'
@@ -47,9 +49,12 @@ type Saved = {
   // Whether this phone has given us an email, in setup or Settings. Like `paid`, it outlives a
   // deleted log. The phone keeps only that, never the address.
   signedUp: boolean
+  // The days this phone started a nap from the timer, and whether the store's rating card has been
+  // asked for. Like `paid`, it outlives a deleted log, so the card is asked for once.
+  rate: Rate
 }
 
-const EMPTY: Saved = { baby: null, sleeps: [], alerts: true, lead: 15, share: null, babyAt: 0, unsent: [], babyUnsent: false, paid: NO_SHOP, paidMarked: null, told: NOT_TOLD, out: null, counts: null, signedUp: false }
+const EMPTY: Saved = { baby: null, sleeps: [], alerts: true, lead: 15, share: null, babyAt: 0, unsent: [], babyUnsent: false, paid: NO_SHOP, paidMarked: null, told: NOT_TOLD, out: null, counts: null, signedUp: false, rate: NO_RATE }
 
 const newId = () => Crypto.randomUUID()
 const newKey = () => {
@@ -68,7 +73,7 @@ function useStoreValue () {
   useEffect(() => {
     AsyncStorage.getItem(STORE_KEY).then((raw) => {
       let s = EMPTY
-      try { if (raw) { const r = JSON.parse(raw); s = { ...EMPTY, ...r, paid: { ...NO_SHOP, ...r.paid }, told: toldOnLoad(r) } } } catch {}
+      try { if (raw) { const r = JSON.parse(raw); s = { ...EMPTY, ...r, paid: { ...NO_SHOP, ...r.paid }, told: toldOnLoad(r), rate: { ...NO_RATE, ...r.rate } } } } catch {}
       setState(s)
     })
   }, [])
@@ -272,6 +277,18 @@ function useStoreValue () {
     return id
   }, [update])
 
+  // A nap started from the timer. On the third day of them the store's rating card is asked for,
+  // a moment after the tap so the timer is seen first, and only with the app still on screen.
+  const napStarted = useCallback(() => {
+    const was = ref.current?.rate ?? NO_RATE, next = napOn(was, dayKey(Date.now()))
+    if (next !== was) update((s) => ({ ...s, rate: next }))
+    if (!rateDue(next)) return
+    setTimeout(async () => {
+      if (AppState.currentState !== 'active' || !(await askForRating())) return
+      update((s) => ({ ...s, rate: { ...s.rate, asked: true } }))
+    }, 1200)
+  }, [update])
+
   const endSleep = useCallback((id: string, up: boolean, at = Date.now()) => {
     update((s) => ({
       ...s,
@@ -403,7 +420,7 @@ function useStoreValue () {
     const s = ref.current
     if (s?.share) await forgetLog(s.share.key)
     await clearAll()
-    update((s) => ({ ...EMPTY, paid: { ...s.paid, sharedPaid: false }, told: s.told, counts: s.counts, signedUp: s.signedUp }))
+    update((s) => ({ ...EMPTY, paid: { ...s.paid, sharedPaid: false }, told: s.told, counts: s.counts, signedUp: s.signedUp, rate: s.rate }))
     track({ event: 'snug_log_deleted' })
   }, [update])
 
@@ -412,7 +429,7 @@ function useStoreValue () {
 
   return {
     loaded: !!state, state: state ?? EMPTY, now, E, gate: g, late, refreshNow: () => setNow(Date.now()),
-    addSleep, endSleep, saveSleep, saveNight, saveTyped, deleteSleep, setBaby, setChair, setup, setMorning, setOut, setAlerts, setLead, startShare, joinShare, stopShare, deleteAll, sync,
+    addSleep, napStarted, endSleep, saveSleep, saveNight, saveTyped, deleteSleep, setBaby, setChair, setup, setMorning, setOut, setAlerts, setLead, startShare, joinShare, stopShare, deleteAll, sync,
     buy, restore, startWeek, setCounts, signUp,
   }
 }

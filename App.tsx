@@ -143,7 +143,7 @@ function Main () {
       say(asleepToast(E.baby.name, ct.inCot, now, E.baby.chair?.trips ?? 0), id); st.refreshNow(); return
     }
     const a = mainAction(live)
-    if (a.kind === 'add') { const id = st.addSleep(a.sleep); say(a.toast, id) }
+    if (a.kind === 'add') { const id = st.addSleep(a.sleep); say(a.toast, id); if (a.sleep.kind === 'nap') st.napStarted() }
     else if (a.kind === 'end') { st.endSleep(a.id, a.up); say(a.toast, a.id) }
     else { setAskId(a.id); setOpen('ask') }
     st.refreshNow()

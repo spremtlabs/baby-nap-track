@@ -2,7 +2,8 @@
 // source, then the web build of the real app walked in a headless browser at phone size through
 // setup with this morning's nap, the morning, a nap and its timer, Settings with the aim, the nap count and a
 // wake window set and cleared, editing a sleep, the 4pm example, the offer of one nap fewer,
-// the 5 October evening, a stretch with no nap logged, going out, the help chat,
+// the 5 October evening, a stretch with no nap logged, going out, the help chat, the store's rating
+// card asked for on the third day of naps,
 // the night, the chair method at bedtime, settling and the next morning, and at ten weeks, last night changed from
 // the list and from the toast after up for the day, the sleep diary
 // for a consultant printed on A4, the next morning
@@ -21,6 +22,7 @@ import { extname, join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { seed, STORE_KEY } from './seed.ts'
 import { HELLO, NOTE } from '../src/lib/note.ts'
+import { dayKey } from '../src/lib/track.ts'
 
 const FAKE_PLAY_KEY = 'snug.fakeplay'
 const EVENTS_KEY = 'snug.events'
@@ -726,6 +728,29 @@ if (PUPPETEER && !fails.length) {
     await done(q)
   }
 
+  // The store's rating card is asked for once, on the third day a nap starts from the timer. The web
+  // build has no store, so the walk reads what the phone keeps once the store has been asked.
+  {
+    const rated = (rate) => { const x = seed('morning'), st = JSON.parse(x.state); if (rate) st.rate = rate; return { state: JSON.stringify(st), now: x.now } }
+    const kept = (page) => page.evaluate((k) => JSON.stringify(JSON.parse(localStorage.getItem(k)).rate), STORE_KEY)
+    const today = dayKey(seed('morning').now)
+    // A phone new to this version starts at no days. The first and second days ask for nothing, the
+    // third asks, and a phone the card was asked for is left as it was.
+    for (const [name, rate, want] of [
+      ['rating-first-day', null, { days: 1, last: today, asked: false }],
+      ['rating-second-day', { days: 1, last: '2026-01-01', asked: false }, { days: 2, last: today, asked: false }],
+      ['rating-third-day', { days: 2, last: '2026-01-01', asked: false }, { days: 3, last: today, asked: true }],
+      ['rating-asked', { days: 3, last: '2026-01-01', asked: true }, { days: 3, last: '2026-01-01', asked: true }],
+    ]) {
+      const p = await open(name, rated(rate))
+      await tap(p, 'Start the timer')
+      await expect(p, 'Nap started at 11:35am.')
+      await new Promise((r) => setTimeout(r, 2500))
+      if ((await kept(p)) !== JSON.stringify(want)) fail(name, `the phone kept ${await kept(p)} after the nap started, not ${JSON.stringify(want)}`)
+      await done(p)
+    }
+  }
+
   // The 4pm example: a short day of three short naps.
   {
     const p = await open('4pm', seed('short'))
@@ -1164,4 +1189,4 @@ if (fails.length) {
   for (const f of fails) console.log('  ' + f)
   process.exit(1)
 }
-console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings with the aim, the nap count and a wake window set and cleared, adding a sleep, the 4pm example, a short morning nap, a short nap with one nap left and the two ways to make it up, the offer of one nap fewer, the night, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, and what PostHog hears at each step')
+console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings with the aim, the nap count and a wake window set and cleared, adding a sleep, the rating card asked for on the third day of naps, the 4pm example, a short morning nap, a short nap with one nap left and the two ways to make it up, the offer of one nap fewer, the night, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, and what PostHog hears at each step')

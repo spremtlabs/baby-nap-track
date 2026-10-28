@@ -1,0 +1,49 @@
+name: iPhone build
+
+# Builds the iPhone app on GitHub's Mac from an encrypted archive of the source, and keeps the
+# build encrypted with the same key. Runs on a push to this branch only.
+on:
+  push:
+    branches: [ios-build]
+
+jobs:
+  build:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+      SRC_PASS: ${{ secrets.SRC_PASS }}
+      EAS_NO_VCS: '1'
+      XCODE_VERSION: '26.6'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Xcode
+        run: |
+          app="/Applications/Xcode_${XCODE_VERSION}.app"
+          [ -d "$app" ] || app=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -1)
+          sudo xcode-select -s "$app/Contents/Developer"
+          xcodebuild -version
+      - name: Unpack the source
+        run: |
+          mkdir src
+          openssl enc -d -aes-256-cbc -pbkdf2 -in src.tgz.enc -pass env:SRC_PASS | tar -xz -C src
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Install
+        working-directory: src
+        run: npm ci
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Build
+        working-directory: src
+        run: eas build --platform ios --profile production --local --non-interactive --output build.ipa
+      - name: Lock the build
+        run: openssl enc -aes-256-cbc -pbkdf2 -salt -in src/build.ipa -out build.ipa.enc -pass env:SRC_PASS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ipa
+          path: build.ipa.enc
+          retention-days: 1

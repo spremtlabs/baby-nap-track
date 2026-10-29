@@ -26,10 +26,10 @@ function EmailBox ({ onSignUp, card }: { onSignUp: (email: string) => Promise<Si
 // The box, or a line saying we have the email.
 export function EmailSettings ({ name, signedUp, onSignUp }: { name: string; signedUp: boolean; onSignUp: (email: string) => Promise<SignUp> }) {
   const t = useTheme()
-  if (signedUp) return <T size={14.5} color={t.muted} style={{ lineHeight: 21, marginTop: 6, marginBottom: 10 }}>We have your email, and we'll send you sleep tips as {name} grows.</T>
+  if (signedUp) return <T size={14.5} color={t.muted} style={{ lineHeight: 21, marginTop: 6, marginBottom: 10 }}>We have your email, and we'll send you each new sleep guide when it goes up.</T>
   return (
     <View style={{ gap: 10, marginTop: 6, marginBottom: 6 }}>
-      <T size={14.5} color={t.muted} style={{ lineHeight: 21 }}>Add your email and we'll send you sleep tips as {name} grows. You can unsubscribe from any email.</T>
+      <T size={14.5} color={t.muted} style={{ lineHeight: 21 }}>Add your email and we'll send you each new sleep guide when it goes up. You can unsubscribe from any email.</T>
       <EmailBox onSignUp={onSignUp} card={false} />
     </View>
   )

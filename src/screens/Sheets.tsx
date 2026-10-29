@@ -4,10 +4,11 @@ import * as Clipboard from 'expo-clipboard'
 import * as Linking from 'expo-linking'
 import { useEffect, useState } from 'react'
 import { Pressable, Share as ShareSheet, TextInput, View } from 'react-native'
-import { MIN, ageText, asLogged, band, bandFor, dayAt, engine, kindFor, morningAt, moveStart, newSleep, pickEnd, pickStart, type Out, type Sleep } from '../lib/engine.ts'
-import { chairEarly, chairLine } from '../lib/chair.ts'
+import { MIN, ageText, asLogged, band, bandFor, clockDay, dayAt, engine, kindFor, morningAt, moveStart, newSleep, pickEnd, pickStart, styleOf, type Out, type Sleep } from '../lib/engine.ts'
+import { styleTexts } from '../lib/guide.ts'
+import { chairEarly, chairLine, settleDraft, settleSave, type SettleDraft } from '../lib/chair.ts'
 import { EmailSettings } from './Email.tsx'
-import { aimNote, clampOut, napDraft, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outDraft, outView, savedLine, windowsNote, type NightDraft, type Row } from '../lib/model.ts'
+import { aimNote, clampOut, clockName, napDraft, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outDraft, outView, savedLine, windowsNote, type NightDraft, type Row } from '../lib/model.ts'
 import { typed, type TypedRow } from '../lib/typed.ts'
 import { IPHONE } from '../lib/phone.ts'
 import { ASK_COUNTS } from '../lib/posthog.ts'
@@ -31,6 +32,23 @@ function Group ({ title, children, first }: { title?: string; children: React.Re
       {title ? <T w="bold" size={17} style={{ marginBottom: 4 }}>{title}</T> : null}
       {children}
     </View>
+  )
+}
+
+// One of the ways the naps can run, picked with a tap, from 1.0.43.
+function StyleRow ({ title, line, on, onPress }: { title: string; line: string; on: boolean; onPress: () => void }) {
+  const t = useTheme()
+  return (
+    <Pressable accessibilityRole="radio" accessibilityState={{ selected: on }} accessibilityLabel={title} onPress={onPress}
+      style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: t.line }}>
+      <View style={{ width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: on ? t.sleep : t.line, alignItems: 'center', justifyContent: 'center', marginTop: 2 }}>
+        {on ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: t.sleep }} /> : null}
+      </View>
+      <View style={{ flex: 1, gap: 2 }}>
+        <T w="semibold" size={16}>{title}</T>
+        <T size={14} color={t.muted} style={{ lineHeight: 19 }}>{line}</T>
+      </View>
+    </Pressable>
   )
 }
 
@@ -64,6 +82,13 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
     st.setBaby({ windows: w })
   }
   const naps = (n: number) => (n === 1 ? '1 nap' : `${n} naps`)
+  // How the naps run, and their times when they run at the same times every day, from 1.0.43.
+  const style = styleOf(baby), clock = clockDay(baby, wk), midnight = new Date(now).setHours(0, 0, 0, 0)
+  const pinClock = (k: number, m: number) => {
+    const c = Array.from({ length: Math.max(clock.length, baby.clock?.length ?? 0) }, (_, i) => baby.clock?.[i] ?? null)
+    c[k] = clamp(m, baby.wake + 30, baby.bed - 30)
+    st.setBaby({ clock: c })
+  }
 
   const sendLink = async () => {
     setBusy(true)
@@ -106,6 +131,8 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
 
       {/* Naps a day and the wake window before each, from 1.0.23. A window the parent sets stays put. */}
       <Group title={`${N}'s naps`}>
+        <T size={14.5} color={t.muted} style={{ marginTop: 6, marginBottom: 2 }}>How naps work</T>
+        {styleTexts(N).map((x) => <StyleRow key={x.id} title={x.title} line={x.short} on={style === x.id} onPress={() => st.setBaby({ style: x.id })} />)}
         {ageNaps >= 2 ? (
           <>
             <T size={14.5} color={t.muted} style={{ marginTop: 6, marginBottom: 6 }}>Naps a day</T>
@@ -113,12 +140,22 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
               onChange={(n) => st.setBaby({ naps: n === ageNaps ? null : n, napsAsked: Date.now() })} />
           </>
         ) : null}
-        {Array.from({ length: b.naps }, (_, k) => {
-          const v = Math.round(E.windowOf(k).len / 5) * 5
-          return <Stepper key={k} label={`Awake before nap ${k + 1}`} value={lenParts(v)} onLess={() => pin(k, v - 15)} onMore={() => pin(k, v + 15)} />
-        })}
-        <Note>{windowsNote(E)}</Note>
-        {baby.windows?.some((x) => x != null) ? <Link label="Work them all out again" onPress={() => st.setBaby({ windows: null })} style={{ marginTop: -8 }} /> : null}
+        {style === 'clock' ? (
+          <>
+            {clock.map((m, k) => <Stepper key={k} label={b.naps >= 4 ? `Nap ${k + 1}` : clockName(midnight + m * MIN)} value={timeParts(m)} onLess={() => pinClock(k, m - 15)} onMore={() => pinClock(k, m + 15)} />)}
+            <Note>Each nap stays at its time, whatever time {N} woke.</Note>
+            {baby.clock?.some((x) => x != null) ? <Link label="Go back to the typical times" onPress={() => st.setBaby({ clock: null })} style={{ marginTop: -8 }} /> : null}
+          </>
+        ) : (
+          <>
+            {Array.from({ length: b.naps }, (_, k) => {
+              const v = Math.round(E.windowOf(k).len / 5) * 5
+              return <Stepper key={k} label={`Awake before nap ${k + 1}`} value={lenParts(v)} onLess={() => pin(k, v - 15)} onMore={() => pin(k, v + 15)} />
+            })}
+            <Note>{windowsNote(E)}</Note>
+            {baby.windows?.some((x) => x != null) ? <Link label="Work them all out again" onPress={() => st.setBaby({ windows: null })} style={{ marginTop: -8 }} /> : null}
+          </>
+        )}
       </Group>
 
       {/* The chair method, offered at every age since 1.0.18. */}
@@ -129,7 +166,7 @@ export function SettingsSheet ({ open, onClose, onToast, onChair, onJoin, onDele
               <T size={16}>Tonight</T>
               <T w="semibold" size={16} style={{ flexShrink: 1, textAlign: 'right' }}>{chairLine(baby.chair, now)}</T>
             </View>
-            <Note>You move a bit closer to the door every three nights. If {N} wakes in the night, sit in your chair until {N}'s back asleep.</Note>
+            <Note>You move a bit closer to the door every three nights. You use the chair at bedtime only.</Note>
             <Link label="How it works" onPress={onChair} />
             <Link label="Stop the chair method" onPress={() => { st.setChair(() => null); onToast('Chair method stopped.') }} style={{ paddingTop: 0 }} />
           </>
@@ -309,12 +346,6 @@ export function NightSheet ({ open, onClose, onToast }: { open: boolean; onClose
   if (!E || !d || !ln) return null
   const N = E.baby.name, problem = nightProblem(ln, d, Date.now())
   const wake = (k: number, f: 'w' | 'b', h: number, m: number) => setD({ ...d, wakes: d.wakes.map((x, j) => (j === k ? { ...x, [f]: nightPick(x[f], h, m) } : x)) })
-  const line = (label: string, value: number, onPick: (h: number, m: number) => void, testID: string) => (
-    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 8 }}>
-      <T size={16}>{label}</T>
-      <TimeField value={value} onPick={onPick} label={label} size={28} testID={testID} />
-    </View>
-  )
   const block = { paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: t.line }
   return (
     <Sheet open={open} onClose={onClose} tall>
@@ -323,15 +354,15 @@ export function NightSheet ({ open, onClose, onToast }: { open: boolean; onClose
         <Pressable accessibilityRole="button" onPress={onClose} hitSlop={12}><T w="bold" size={16}>Close</T></Pressable>
       </View>
       <T size={15} color={t.muted} style={{ marginBottom: 8 }}>{ln.logged ? nightSum(d) : `Pop in when ${N} went down and woke in the night.`}</T>
-      <View style={block}>{line('Down for the night', d.down, (h, m) => setD({ ...d, down: nightPick(d.down, h, m) }), 'night-down')}</View>
+      <View style={block}><TimeLine label="Down for the night" value={d.down} onPick={(h, m) => setD({ ...d, down: nightPick(d.down, h, m) })} testID="night-down" /></View>
       {d.wakes.map((x, k) => (
         <View key={k} style={block}>
-          {line('Woke', x.w, (h, m) => wake(k, 'w', h, m), `night-woke-${k + 1}`)}
-          {line('Back asleep', x.b, (h, m) => wake(k, 'b', h, m), `night-back-${k + 1}`)}
+          <TimeLine label="Woke" value={x.w} onPick={(h, m) => wake(k, 'w', h, m)} testID={`night-woke-${k + 1}`} />
+          <TimeLine label="Back asleep" value={x.b} onPick={(h, m) => wake(k, 'b', h, m)} testID={`night-back-${k + 1}`} />
           <Link label="Remove this waking" onPress={() => setD({ ...d, wakes: d.wakes.filter((_, j) => j !== k) })} style={{ alignSelf: 'flex-end', paddingVertical: 4 }} />
         </View>
       ))}
-      <View style={block}>{line('Up for the day', d.up, (h, m) => setD({ ...d, up: nightPick(d.up, h, m) }), 'night-up')}</View>
+      <View style={block}><TimeLine label="Up for the day" value={d.up} onPick={(h, m) => setD({ ...d, up: nightPick(d.up, h, m) })} testID="night-up" /></View>
       <View style={{ marginTop: 12 }}><Pill label={`Add a time ${N} woke`} onPress={() => setD(nightAddWake(d))} /></View>
       {problem ? <T size={15} color={t.honeyText} style={{ marginTop: 6, lineHeight: 21 }}>{problem}</T> : null}
       <Button label="Save" disabled={!!problem} style={{ marginTop: 16 }} onPress={() => {
@@ -339,6 +370,78 @@ export function NightSheet ({ open, onClose, onToast }: { open: boolean; onClose
         const { save, gone } = nightSave(ln, d, () => `new-${Date.now()}-${++n}`)
         const next = st.saveNight(save, gone)
         onClose(); onToast(savedLine(next, st.gate))
+      }} />
+    </Sheet>
+  )
+}
+
+// One time in a sheet, its label on the left and the clock on the right.
+function TimeLine ({ label, value, onPick, testID }: { label: string; value: number; onPick: (h: number, m: number) => void; testID: string }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 8 }}>
+      <T size={16}>{label}</T>
+      <TimeField value={value} onPick={onPick} label={label} size={28} testID={testID} />
+    </View>
+  )
+}
+
+// A count in a sheet with a minus and a plus.
+function CountLine ({ label, n, onChange }: { label: string; n: number; onChange: (n: number) => void }) {
+  return (
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12, paddingVertical: 8 }}>
+      <T size={16}>{label}</T>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+        <StepButton label="−" a11y={`${label}, one fewer`} onPress={() => onChange(Math.max(0, n - 1))} />
+        <T w="semibold" size={22} style={{ minWidth: 28, textAlign: 'center', fontVariant: ['tabular-nums'] }}>{n}</T>
+        <StepButton label="+" a11y={`${label}, one more`} onPress={() => onChange(n + 1)} />
+      </View>
+    </View>
+  )
+}
+
+// Last night's bedtime while the chair method runs, from 12 October 2026: when the baby went into
+// the cot, asleep, the times the parent went over and picked the baby up, and a note. It is its own
+// sheet, apart from the wakings in the night. Asleep is the night's own start, so changing it here
+// moves the start of last night in the log.
+export function BedtimeSheet ({ open, onClose, onToast }: { open: boolean; onClose: () => void; onToast: (s: string) => void }) {
+  const t = useTheme(), st = useStore(), E = st.E
+  const [d, setD] = useState<NightDraft | null>(null)
+  const [sd, setSd] = useState<SettleDraft | null>(null)
+  useEffect(() => {
+    if (!open || !st.E) return
+    const nd = nightDraft(st.E)
+    setD(nd); setSd(nd ? settleDraft(st.E.baby.chair, nd.down) : null)
+  }, [open])
+  const ln = E?.lastNight()
+  if (!E || !d || !sd || !ln) return null
+  const cot = sd.inCot ?? d.down, problem = nightProblem(ln, d, Date.now(), cot)
+  return (
+    <Sheet open={open} onClose={onClose} tall>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+        <T w="bold" size={22}>Bedtime</T>
+        <Pressable accessibilityRole="button" onPress={onClose} hitSlop={12}><T w="bold" size={16}>Close</T></Pressable>
+      </View>
+      <T size={15} color={t.muted} style={{ marginBottom: 8 }}>{`Chair method, night ${sd.n}`}</T>
+      <TimeLine label="In the cot" value={cot} onPick={(h, m) => setSd({ ...sd, inCot: nightPick(cot, h, m) })} testID="bed-cot" />
+      <TimeLine label="Asleep" value={d.down} onPick={(h, m) => setD({ ...d, down: nightPick(d.down, h, m) })} testID="bed-asleep" />
+      {d.down > cot ? <T size={15} color={t.muted} style={{ marginTop: 2, marginBottom: 6 }}>{`${dur(d.down - cot)} to fall asleep`}</T> : null}
+      <View style={{ borderTopWidth: 1, borderTopColor: t.line, marginTop: 8, paddingTop: 6 }}>
+        <CountLine label="Went over" n={sd.trips} onChange={(n) => setSd({ ...sd, trips: n })} />
+        <CountLine label="Picked up" n={sd.picks} onChange={(n) => setSd({ ...sd, picks: n })} />
+      </View>
+      <TextInput testID="bed-note" multiline value={sd.note} onChangeText={(v) => setSd({ ...sd, note: v })}
+        placeholder="Notes on bedtime" placeholderTextColor={t.muted} accessibilityLabel="Notes on bedtime"
+        style={{ marginTop: 10, fontFamily: 'Figtree_400Regular', fontSize: 16, lineHeight: 22, color: t.ink, backgroundColor: t.soft, borderRadius: 14, paddingVertical: 12, paddingHorizontal: 14, minHeight: 96, textAlignVertical: 'top' }} />
+      {problem ? <T size={15} color={t.honeyText} style={{ marginTop: 10, lineHeight: 21 }}>{problem}</T> : null}
+      <Button label="Save" disabled={!!problem} style={{ marginTop: 16 }} onPress={() => {
+        st.setChair((c) => (c ? settleSave(c, sd, d.down) : c))
+        // A night in the log starts when the baby fell asleep, so a new asleep time moves it.
+        if (ln.logged && d.down !== ln.segs[0].s) {
+          let n = 0
+          const { save, gone } = nightSave(ln, d, () => `new-${Date.now()}-${++n}`)
+          st.saveNight(save, gone)
+        }
+        onClose(); onToast('Saved.')
       }} />
     </Sheet>
   )

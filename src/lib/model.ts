@@ -4,6 +4,13 @@ import { DAY, HOUR, MIN, ageText, ageWeeks, atMins, band, bandFor, dayAt, engine
 import { isLocked, lockedHero, offerHero, trialNote, type Gate } from './shop.ts'
 import { bigDur, bigTime, dur, fmt, hours, range, runParts, tallyDur, times, type Part } from './words.ts'
 
+// A nap at the same time every day goes by its time of day in Today's list, from 1.0.43, the same
+// names setup gives the typical naps.
+export function clockName (t: number): string {
+  const d = new Date(t), m = d.getHours() * 60 + d.getMinutes()
+  return m < 660 ? 'Morning nap' : m < 840 ? 'Lunchtime nap' : m < 960 ? 'Afternoon nap' : 'Late afternoon nap'
+}
+
 const NONE: Gate = { kind: 'none' }
 
 export type Hero = {
@@ -104,10 +111,21 @@ export function hero (E: Engine, g: Gate = NONE): Hero {
   } else if (ph === 'day') {
     const mk = E.makeUp(), w = E.plan()[0], lw = E.lastWake()
     h.cta = `${N} fell asleep`
+    // Whatever gets the night right, from 1.0.43: a nap not started within an hour of its window
+    // opening is rescued in the car, the buggy or on a parent, and the line says so then and no
+    // sooner. Up to 1.0.34 every nap time said it, at 23 minutes awake too.
+    const rescue = E.style === 'night' && !!w && !w.bed && !w.car && now >= w.s + HOUR
+    const anyWay = rescue ? ' The car, the buggy or a nap on you all count.' : ''
+    // These two say how long the baby has been awake, as every other nap time does; up to 1.0.32 the
+    // line went missing on them. From 1.0.33 to 1.0.34 every nap time also said an overtired baby
+    // could nap in the car or the buggy. From 1.0.35 that line comes after an hour of settling a nap
+    // in the cot, in `chairHero`, because it is for a baby being sleep trained.
     if (mk && mk.kind === 'by') {
-      Object.assign(h, { eyebrow: 'Nap needed today', hot: true, big: bigDur(mk.need), glow: 0.7, sub: `Get ${N} down by ${fmt(mk.by)}. A nap in the car or the buggy counts.` })
+      Object.assign(h, { eyebrow: 'Nap needed today', hot: true, big: bigDur(mk.need), glow: 0.7, sub: `Get ${N} down by ${fmt(mk.by)}.${anyWay}` })
+      h.note = now - lw < MIN ? 'Just woke' : `Awake ${dur(now - lw)}`
     } else if (mk && mk.kind === 'now') {
-      Object.assign(h, { eyebrow: 'Nap needed now', hot: true, big: bigDur(mk.need), glow: 1, sub: `Get ${N} to sleep now. A nap in the car or the buggy counts.` })
+      Object.assign(h, { eyebrow: 'Nap needed now', hot: true, big: bigDur(mk.need), glow: 1, sub: `Get ${N} to sleep now.${anyWay}` })
+      h.note = now - lw < MIN ? 'Just woke' : `Awake ${dur(now - lw)}`
     } else if (mk && mk.kind === 'late') {
       const close = mk.early + 15 * MIN
       if (now < mk.early - 15 * MIN) Object.assign(h, { eyebrow: 'Early bedtime', big: bigTime(mk.early), sub: `${N} had ${dur(mk.B.so)} of naps today. Bed half an hour early helps make up the rest.` })
@@ -125,15 +143,19 @@ export function hero (E: Engine, g: Gate = NONE): Hero {
       else if (now <= w.e) Object.assign(h, { eyebrow: w.bed ? 'Bedtime window open' : 'Nap window open', hot: true, big: [{ n: 'Now' }], sub: `Put ${N} down before ${fmt(w.e)}.`, glow: 1 })
       else Object.assign(h, {
         eyebrow: w.bed ? 'Bedtime' : 'Nap time', hot: true, big: [{ n: 'Now' }], glow: 0.6,
-        sub: w.bed ? `The window closed at ${fmt(w.e)}. Put ${N} down as soon as you can.` : `The window closed at ${fmt(w.e)}. Put ${N} down as soon as you can. A nap in the car or the buggy counts.`,
+        sub: rescue ? `The window opened at ${fmt(w.s)}.${anyWay}` : `The window closed at ${fmt(w.e)}. Put ${N} down as soon as you can.`,
       })
       h.note = now - lw < MIN ? 'Just woke' : `Awake ${dur(now - lw)}`
       h.ways = ways(E)
       if (!h.ways) h.fewer = fewerNaps(E)
     }
+    // Whatever gets the night right: a nap under 45 minutes gets one try to settle back, said for
+    // the first 20 minutes after it, from 1.0.43.
+    const last = E.style === 'night' ? E.napsSince(E.dayStart().t).filter((x) => x.e != null).pop() : undefined
+    if (last && last.e! - last.s < 45 * MIN && now - last.e! < 20 * MIN && !mk) h.note = `Woke after ${dur(last.e! - last.s)}. Try once to settle ${N} back to sleep.`
   } else if (ph === 'nap' && c) {
     Object.assign(h, { eyebrow: 'Napping', big: runParts(now - c.s).parts, run: c.s, cta: `${N} woke up`, sub: `Fell asleep at ${fmt(c.s)}.` })
-    const wa = isLocked(g) ? null : E.wakeAt()
+    const wa = isLocked(g) ? null : E.wakeDue()
     if (wa != null) h.wake = { at: wa, now: now >= wa, left: now >= wa ? `Bedtime is ${fmt(E.budget().bedT)}` : `in ${dur(wa - now)}` }
   } else if (ph === 'night' && c) {
     const segs = E.nightSegs(), wakes = segs.length - 1
@@ -180,10 +202,10 @@ export function daySleep (E: Engine, g: Gate = NONE): DaySleep {
     so = B.so
     if (lock) say = so ? `${N} has had ${dur(so)} of naps today.` : `No naps logged yet today.`
     else if (E.activeOut()) say = `The plan for going out gives ${N} ${dur(E.outPlan().total)} of day sleep.`
-    else if (B.rem < 5 * MIN) say = `${N} has had ${hours(B.target)} of day sleep today.`
+    else if (B.rem < 5 * MIN) say = `${N} has had ${dur(so)} of day sleep today.`
     else if (mk && mk.kind === 'late') say = `${N} is ${dur(B.rem)} short of ${hours(B.target)} today.`
     else if (mk) say = `${N} needs ${dur(B.rem)} more to make ${hours(B.target)}.`
-    else if (E.wakeAt() != null && E.wakeAt()! > now) say = `${N}'s day sleep comes to ${dur(so + E.wakeAt()! - now)} with a wake-up at ${fmt(E.wakeAt()!)}.`
+    else if (E.wakeDue() != null && E.wakeDue()! > now) say = `${N}'s day sleep comes to ${dur(so + E.wakeDue()! - now)} with a wake-up at ${fmt(E.wakeDue()!)}.`
     // 11 October 2026: a nap at 6pm read `2 h 33 min to go before bed at 7pm`, more than the hour left.
     else if (E.cur() && B.rem > B.bedT - now) say = `${N} is ${dur(B.rem)} short of ${hours(B.target)} today.`
     else if (E.cur()) say = `${dur(B.rem)} to go before bed at ${fmt(B.bedT)}.`
@@ -191,7 +213,7 @@ export function daySleep (E: Engine, g: Gate = NONE): DaySleep {
     else if (pl.length === 1) say = `${dur(B.rem)} to go. Aim for that in the next nap.`
     else say = `${dur(B.rem)} to go before bed at ${fmt(B.bedT)}.`
     blocks = naps.map((x) => ({ s: x.s, e: x.e ?? now, run: x.e == null }))
-    const wa = lock ? null : E.wakeAt()
+    const wa = lock ? null : E.wakeDue()
     if (wa != null && wa > now) blocks.push({ s: now, e: wa, plan: true })
     for (const [a, z] of E.gapsIn(ds.t, null, naps.filter((x) => x.e != null))) blocks.push({ s: a, e: z, gap: true })
     if (outBlock) blocks.unshift(outBlock)
@@ -228,7 +250,7 @@ export function ribbon (t0: number, t1: number, blocks: Block[]) {
   }
 }
 
-export type Row = { mark: 'edge' | 'done' | 'plan' | 'next' | 'gap' | 'out'; title: string; sub?: string; right: string; edit?: string; wake?: boolean; gap?: [number, number]; out?: boolean; night?: boolean; at: number }
+export type Row = { mark: 'edge' | 'done' | 'plan' | 'next' | 'gap' | 'out'; title: string; sub?: string; right: string; edit?: string; wake?: boolean; gap?: [number, number]; out?: boolean; night?: boolean; bed?: boolean; at: number }
 
 export function todayRows (E: Engine, g: Gate = NONE): { heading: string; rows: Row[] } {
   const N = E.baby.name, ph = E.phase(), now = E.now, rows: Row[] = [], out = E.out
@@ -266,14 +288,16 @@ export function todayRows (E: Engine, g: Gate = NONE): { heading: string; rows: 
   if (ln) rows.push(ln.logged
     ? { at: ln.segs[0].s, mark: 'done', title: 'Last night', sub: `${range(ln.segs[0].s, ds.t, ' to ')}${ln.wakes ? `, woke ${times(ln.wakes)}` : ''}`, right: dur(ln.asleep), night: true }
     : { at: ds.t - 1, mark: 'edge', title: 'Last night', sub: 'Not logged', right: 'Add', night: true })
-  rows.push({ at: ds.t, mark: 'edge', title: ds.up && !isMark(ds.up) ? 'Up for the day' : 'Woke up', right: fmt(ds.t), wake: true })
+  rows.push(ds.guess
+    ? { at: ds.t, mark: 'edge', title: 'Woke up', sub: 'Not logged', right: 'Add', wake: true }
+    : { at: ds.t, mark: 'edge', title: ds.up && !isMark(ds.up) ? 'Up for the day' : 'Woke up', right: fmt(ds.t), wake: true })
   for (const x of naps) {
     rows.push(x.e == null
       ? { at: x.s, mark: 'done', title: 'Napping', sub: `since ${fmt(x.s)}`, right: dur(now - x.s), edit: x.id }
       : { at: x.s, mark: 'done', title: 'Nap', sub: range(x.s, x.e, ' to '), right: dur(x.e - x.s), edit: x.id })
   }
   for (const x of E.taps()) rows.push(tapRow(x))
-  const wa = lock ? null : E.wakeAt()
+  const wa = lock ? null : E.wakeDue()
   if (wa != null) rows.push({ at: Math.max(wa, now), mark: 'next', title: 'Optional wake', sub: 'Some parents wake now to leave a gap before bedtime', right: now >= wa ? 'now' : fmt(wa) })
   for (const gp of E.gapsIn(ds.t, null, naps.filter((x) => x.e != null))) rows.push(gapRow(gp))
   ;(lock ? [] : E.planNaps()).forEach((p, j) => {
@@ -284,7 +308,7 @@ export function todayRows (E: Engine, g: Gate = NONE): { heading: string; rows: 
       else rows.push({
         at: w.c,
         mark: j === 0 ? 'next' : 'plan',
-        title: j === 0 ? (w.cat ? 'Short nap next' : 'Next nap') : w.cat ? 'Short nap' : 'Nap',
+        title: E.style === 'clock' && !w.cat && E.band().naps < 4 ? clockName(w.c) : j === 0 ? (w.cat ? 'Short nap next' : 'Next nap') : w.cat ? 'Short nap' : 'Nap',
         sub: j === 0 ? range(w.s, w.e, ' to ') : `about ${fmt(w.c)}`,
         right: `aim for ${dur(p.aim)}`,
       })
@@ -297,23 +321,27 @@ export function todayRows (E: Engine, g: Gate = NONE): { heading: string; rows: 
 }
 
 // The week shows from the first day, today included. The averages wait for three whole days.
-export type Week = { empty: true } | { empty: false; rows: { label: string; value: number; text: string; today?: boolean }[]; max: number; target: number; key: string; avg: { day: Part[]; night: Part[] } | null }
+// A past row carries its wake-up, `wake`, for the sheet that marks it, and `off` once it is marked
+// as not tracked, from 1.0.42.
+export type WeekRow = { label: string; value: number; text: string; today?: boolean; wake?: number; off?: boolean }
+export type Week = { empty: true } | { empty: false; rows: WeekRow[]; max: number; target: number; key: string; avg: { day: Part[]; night: Part[] } | null }
 
 export function week (E: Engine): Week {
-  const days = E.pastDays(), ph = E.phase(), night = ph === 'night' || ph === 'waking'
+  // The rows list every day logged, and the averages read only the days the parent tracked.
+  const logged = E.loggedDays(), days = E.pastDays(), ph = E.phase(), night = ph === 'night' || ph === 'waking'
   const nd = night ? E.nightDay() : null
   const todayValue = nd ? nd.so : E.budget().so
-  if (!days.length && !todayValue) return { empty: true }
+  if (!logged.length && !todayValue) return { empty: true }
   const target = E.aim().min * MIN
   // At night the day just gone is the top row, and the list below it starts the day before.
   const topT = nd ? nd.t0 : E.dayStart().t
-  const list = [{ label: new Date(topT).getDate() === new Date(E.now).getDate() ? 'Today' : 'Yesterday', value: todayValue, today: true }]
-  for (const d of [...days].reverse()) {
+  const list: Omit<WeekRow, 'text'>[] = [{ label: new Date(topT).getDate() === new Date(E.now).getDate() ? 'Today' : 'Yesterday', value: todayValue, today: true }]
+  for (const d of [...logged].reverse()) {
     if (nd && d.wake === nd.t0) continue
     const dt = new Date(d.wake)
-    list.push({ label: `${dt.toLocaleDateString('en-IE', { weekday: 'short' })} ${dt.getDate()}`, value: d.day, today: false })
+    list.push({ label: `${dt.toLocaleDateString('en-IE', { weekday: 'short' })} ${dt.getDate()}`, value: d.skip ? 0 : d.day, today: false, wake: d.wake, off: d.skip })
   }
-  const rows = list.slice(0, 7).map((r) => ({ ...r, text: dur(r.value) }))
+  const rows = list.slice(0, 7).map((r) => ({ ...r, text: r.off ? 'Not tracked' : dur(r.value) }))
   const max = Math.max(target * 1.25, ...rows.map((r) => r.value))
   const key = `The line marks ${hours(target)} of day sleep.`
   if (days.length < 3) return { empty: false, rows, max, target, key, avg: null }
@@ -401,7 +429,7 @@ export function mainAction (E: Engine): Action {
 export function sleepNotice (E: Engine): { title: string; body: string } | null {
   const N = E.baby.name, ph = E.phase(), c = E.cur()
   if (!c) return null
-  const wa = E.wakeAt()
+  const wa = E.wakeDue()
   if (ph === 'nap') return { title: `${N} is napping`, body: wa != null ? `Fell asleep at ${fmt(c.s)}. Optional wake at ${fmt(wa)}.` : `Fell asleep at ${fmt(c.s)}.` }
   return { title: `${N} is asleep`, body: E.nightSegs().length > 1 ? `Back down at ${fmt(c.s)}.` : `Down for the night at ${fmt(c.s)}.` }
 }
@@ -413,7 +441,7 @@ export function reminder (E: Engine, leadMin: number): { at: number; title: stri
   if (wa != null && c) return { at: wa, title: 'Optional wake', body: `Some parents wake at this point to leave enough of a gap before bedtime. ${E.baby.name} has slept ${dur(wa - c.s)} and bedtime is ${fmt(E.budget().bedT)}.` }
   if (E.phase() !== 'day' || E.dayStart().unknown) return null
   const N = E.baby.name, mk = E.makeUp(), p = E.plan()[0]
-  if (mk && mk.kind === 'by') return { at: mk.by - leadMin * MIN, title: `${N} needs a nap`, body: `Get ${N} down by ${fmt(mk.by)} for ${dur(mk.need)}. A nap in the car or the buggy counts.` }
+  if (mk && mk.kind === 'by') return { at: mk.by - leadMin * MIN, title: `${N} needs a nap`, body: `Get ${N} down by ${fmt(mk.by)} for ${dur(mk.need)}.` }
   if (mk && mk.kind === 'late') return { at: mk.early - leadMin * MIN, title: 'Early bedtime', body: `Bed at ${fmt(mk.early)} tonight helps make up the day's naps.` }
   if (mk) return null
   if (!p) return null
@@ -492,11 +520,14 @@ export const nightSum = (d: NightDraft) => `${dur(nightAsleep(d))} asleep${d.wak
 
 // What stops the night being saved, said so the parent knows which time to move. Empty when it
 // can be saved.
-export function nightProblem (ln: LastNight, d: NightDraft, now: number) {
-  const t = nightTimes(d)
+// With the chair method on, the first time is when the baby fell asleep, and the cot time above it
+// has to come first.
+export function nightProblem (ln: LastNight, d: NightDraft, now: number, inCot: number | null = null) {
+  const t = nightTimes(d), down = inCot == null ? 'Down for the night' : 'Asleep'
+  if (inCot != null && inCot > d.down) return 'In the cot has to come before Asleep.'
   for (let i = 1; i < t.length; i++) if (t[i] <= t[i - 1]) return 'Each time has to come after the one above it.'
   if (d.up > now + MIN) return 'Up for the day has to be before now.'
-  if (ln.before != null && d.down < ln.before) return `The last nap ended at ${fmt(ln.before)}. Down for the night has to come after that.`
+  if (ln.before != null && d.down < ln.before) return `The last nap ended at ${fmt(ln.before)}. ${down} has to come after that.`
   if (ln.after != null && d.up > ln.after) return `The first nap today started at ${fmt(ln.after)}. Up for the day has to come before that.`
   return ''
 }

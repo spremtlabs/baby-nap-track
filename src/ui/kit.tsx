@@ -143,12 +143,12 @@ export function Sheet ({ open, onClose, children, tall, end, foot }: { open: boo
   )
 }
 
-export function Toast ({ text, action, onAction, visible }: { text: string; action?: string; onAction?: () => void; visible: boolean }) {
+export function Toast ({ text, action, onAction, visible, lift = 0 }: { text: string; action?: string; onAction?: () => void; visible: boolean; lift?: number }) {
   const t = useTheme(), insets = useSafeAreaInsets()
   const v = useRef(new Animated.Value(0)).current
   useEffect(() => { Animated.timing(v, { toValue: visible ? 1 : 0, duration: 220, useNativeDriver: true }).start() }, [visible])
   return (
-    <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={{ position: 'absolute', left: 16, right: 16, bottom: 20 + insets.bottom, opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }], backgroundColor: t.btn, borderRadius: 18, paddingVertical: 15, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+    <Animated.View pointerEvents={visible ? 'auto' : 'none'} style={{ position: 'absolute', left: 16, right: 16, bottom: 20 + lift + insets.bottom, opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) }], backgroundColor: t.btn, borderRadius: 18, paddingVertical: 15, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <T size={15} color={t.btnInk} style={{ flex: 1 }}>{text}</T>
       {action ? <Pressable accessibilityRole="button" onPress={onAction} hitSlop={10}><T w="bold" size={15} color={t.btnInk} style={{ textDecorationLine: 'underline' }}>{action}</T></Pressable> : null}
     </Animated.View>

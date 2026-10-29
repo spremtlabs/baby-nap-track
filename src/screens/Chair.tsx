@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Pressable, View } from 'react-native'
 import { SvgXml } from 'react-native-svg'
-import { CRY, WHY, tripsSoFar, type Ask, type Card, type Chart, type Cry, type DayNote, type Guide, type Intro, type Why } from '../lib/chair.ts'
+import { CRY, WHY, tripsSoFar, type Ask, type Card, type Chart, type Cry, type DayNote, type Guide, type Help, type HelpId, type Intro, type NightPlan, type Why } from '../lib/chair.ts'
 import { SCENE_STOPS, chairScene } from '../lib/chairArt.ts'
 import { Button, Eyebrow, Link, Sheet, T, useTheme } from '../ui/kit.tsx'
 
@@ -32,25 +32,136 @@ export function ChairPicture ({ place, done, ranges }: { place: number; done: nu
   )
 }
 
-// On Today through the day: which night it is, where to sit tonight and when bedtime is.
-export function ChairNote ({ note }: { note: DayNote }) {
+// On Today through the day: which night it is, where to sit tonight, one finding, the link to
+// tonight's plan, and once the day's naps are done the button that puts the baby in the cot.
+// From 1.0.41 it sits under the timer, and the X keeps it off Today until the bedtime window.
+export function ChairNote ({ note, onCot, onPlan, onClose }: { note: DayNote; onCot: () => void; onPlan: () => void; onClose?: () => void }) {
   const t = useTheme()
   return (
-    <View testID="chair-day" style={{ marginTop: -12, marginBottom: 26, backgroundColor: t.soft, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 16, gap: 3 }}>
-      <Eyebrow>{note.head}</Eyebrow>
+    <View testID="chair-day" style={{ marginTop: 22, backgroundColor: t.soft, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 16, gap: 3 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+        <Eyebrow>{note.head}</Eyebrow>
+        {onClose && !note.cot ? (
+          <Pressable testID="chair-day-close" accessibilityRole="button" accessibilityLabel="Hide until bedtime" onPress={onClose} hitSlop={12} style={{ marginTop: -4, marginRight: -6, width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
+            <T size={20} color={t.muted}>×</T>
+          </Pressable>
+        ) : null}
+      </View>
       <T size={15.5} style={{ lineHeight: 22 }}>{note.line}</T>
+      {note.known ? <T size={14} color={t.muted} style={{ lineHeight: 20, marginTop: 4 }}>{note.known}</T> : null}
+      <PlanLink onPress={onPlan} />
+      {note.cot ? <Button label={note.cot} onPress={onCot} style={{ height: 52, marginTop: 8, marginBottom: 2 }} /> : null}
     </View>
   )
 }
 
-// On Today at bedtime, while settling, and when the baby wakes in the night.
+const PlanLink = ({ onPress }: { onPress: () => void }) => {
+  const t = useTheme()
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress} hitSlop={6} style={{ minHeight: 40, justifyContent: 'center', alignSelf: 'flex-start' }}>
+      <T w="semibold" size={15.5} style={{ textDecorationLine: 'underline', textDecorationColor: t.muted }}>{"Tonight's plan"}</T>
+    </Pressable>
+  )
+}
+
+// Tonight's steps, numbered, on the card at bedtime and in tonight's plan.
+function Steps ({ steps }: { steps: string[] }) {
+  const t = useTheme()
+  return (
+    <View style={{ gap: 10, marginTop: 12 }}>
+      {steps.map((x, i) => (
+        <View key={i} style={{ flexDirection: 'row', gap: 12, alignItems: 'flex-start' }}>
+          <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: t.bg, alignItems: 'center', justifyContent: 'center' }}>
+            <T w="bold" size={13}>{String(i + 1)}</T>
+          </View>
+          <T size={16} style={{ flex: 1, lineHeight: 23 }}>{x}</T>
+        </View>
+      ))}
+    </View>
+  )
+}
+
+// If it gets hard: one row each, and a tap opens what to do. 14 October 2026: a list of
+// rows in place of a row of buttons with a paragraph under them.
+function HelpList ({ help }: { help: Help[] }) {
+  const t = useTheme()
+  const [on, setOn] = useState<HelpId | null>(null)
+  return (
+    <View testID="chair-help" style={{ marginTop: 14 }}>
+      <T w="semibold" size={17} style={{ marginBottom: 4 }}>If it gets hard</T>
+      {help.map((h, i) => {
+        const open = h.id === on
+        return (
+          <View key={h.id} style={{ borderTopWidth: i ? 1 : 0, borderTopColor: t.line }}>
+            <Pressable accessibilityRole="button" accessibilityLabel={h.q} accessibilityState={{ expanded: open }} onPress={() => setOn(open ? null : h.id)}
+              style={({ pressed }) => ({ minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', opacity: pressed ? 0.7 : 1 })}>
+              <T w="medium" size={16}>{h.q}</T>
+              <T size={18} color={t.muted}>{open ? '−' : '+'}</T>
+            </Pressable>
+            {open ? <View testID="chair-help-answer" style={{ paddingBottom: 14 }}><T size={16} style={{ lineHeight: 23 }}>{h.a}</T></View> : null}
+          </View>
+        )
+      })}
+    </View>
+  )
+}
+
+// Tonight's plan on the Night tab from 1.0.41: where to sit, the line for tonight, the picture,
+// three steps, what to expect, and the rows for when it gets hard.
+export function NightPlanView ({ plan }: { plan: NightPlan }) {
+  const t = useTheme()
+  return (
+    <View testID="chair-night">
+      <T w="bold" size={26} style={{ lineHeight: 32 }}>{plan.where}</T>
+      {plan.line ? <T size={16.5} style={{ lineHeight: 24, marginTop: 6 }}>{plan.line}</T> : null}
+      <View style={{ height: 14 }} />
+      <ChairPicture place={plan.place} done={plan.place} ranges={plan.ranges} />
+      <Steps steps={plan.steps} />
+      {plan.expect ? (
+        <View style={{ marginTop: 18, backgroundColor: t.soft, borderRadius: 16, padding: 16, gap: 4 }}>
+          <Eyebrow>What to expect</Eyebrow>
+          <T size={15.5} style={{ lineHeight: 22 }}>{plan.expect}</T>
+        </View>
+      ) : null}
+      <View style={{ marginTop: 10 }}><HelpList help={plan.help} /></View>
+    </View>
+  )
+}
+
+// Tonight's plan, opened from the note on Today: where to sit, the line for tonight, the picture,
+// three steps, what to expect, and the rows for when it gets hard.
+export function TonightSheet ({ open, plan, onClose }: { open: boolean; plan: NightPlan | null; onClose: () => void }) {
+  const t = useTheme()
+  if (!plan) return null
+  return (
+    <Sheet key="night" open={open} onClose={onClose} tall foot={<Button label="Got it" onPress={onClose} />}>
+      <View testID="chair-night">
+        <Eyebrow>{plan.head}</Eyebrow>
+        <T w="bold" size={24} style={{ lineHeight: 30, marginTop: 6 }}>{plan.where}</T>
+        {plan.line ? <T size={16.5} style={{ lineHeight: 24, marginTop: 6 }}>{plan.line}</T> : null}
+        <View style={{ height: 14 }} />
+        <ChairPicture place={plan.place} done={plan.place} ranges={plan.ranges} />
+        <Steps steps={plan.steps} />
+        {plan.expect ? <T size={15} color={t.muted} style={{ lineHeight: 21, marginTop: 14 }}>{plan.expect}</T> : null}
+        <View style={{ marginTop: 10 }}><HelpList help={plan.help} /></View>
+      </View>
+    </Sheet>
+  )
+}
+
+// On Today at bedtime: the picture, where to sit and tonight's steps. While the baby settles: one
+// line for what to do from the chair, and the rows for when it gets hard.
 export function ChairCard ({ card, onHold }: { card: Card; onHold: () => void }) {
   const t = useTheme()
   return (
-    <View style={{ marginTop: 22, backgroundColor: t.soft, borderRadius: 20, paddingTop: 14, paddingHorizontal: 10, paddingBottom: card.hold || card.line ? 4 : 6 }}>
+    <View style={{ marginTop: 22, backgroundColor: t.soft, borderRadius: 20, paddingTop: 14, paddingHorizontal: 10, paddingBottom: 6 }}>
       <View style={{ paddingHorizontal: 4, paddingBottom: 10 }}><Eyebrow>{card.eyebrow}</Eyebrow></View>
-      <ChairPicture place={card.place} done={card.done} ranges={card.ranges} />
-      {card.line ? <T size={15.5} style={{ paddingHorizontal: 4, paddingBottom: 10, lineHeight: 22 }}>{card.line}</T> : null}
+      {card.live ? null : <ChairPicture place={card.place} done={card.done} ranges={card.ranges} />}
+      <View style={{ paddingHorizontal: 4 }}>
+        {card.line ? <T w="semibold" size={16.5} style={{ lineHeight: 24 }}>{card.line}</T> : null}
+        {card.steps.length ? <Steps steps={card.steps} /> : null}
+        {card.help.length ? <HelpList help={card.help} /> : null}
+      </View>
       {card.hold ? (
         <Pressable accessibilityRole="button" onPress={onHold} hitSlop={6} style={{ minHeight: 44, justifyContent: 'center', paddingHorizontal: 4, alignSelf: 'flex-start' }}>
           <T size={15.5} style={{ textDecorationLine: 'underline', textDecorationColor: t.muted }}>{card.hold}</T>
@@ -113,16 +224,21 @@ export function ChairChart ({ chart, ask, onHold }: { chart: Chart; ask?: React.
   )
 }
 
-// While the baby settles: each time the parent gets up to pat or shush.
-export function TripsRow ({ n, onPress }: { n: number; onPress: () => void }) {
+// While the baby settles: each time the parent gets up to pat or shush, and from 14 October 2026
+// each time the parent picks the baby up. The two sit side by side.
+export function TripsRow ({ n, picks, name, onPress, onPick }: { n: number; picks: number; name: string; onPress: () => void; onPick: () => void }) {
   const t = useTheme()
+  const btn = (label: string, k: number, on: () => void) => (
+    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={on}
+      style={({ pressed }) => ({ flex: 1, minHeight: 64, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 18, backgroundColor: t.soft, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.7 : 1 })}>
+      <T w="semibold" size={16} style={{ textAlign: 'center' }}>{label}</T>
+      <T size={14} color={t.muted} style={{ marginTop: 2 }}>{tripsSoFar(k)}</T>
+    </Pressable>
+  )
   return (
-    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14, marginTop: 14 }}>
-      <Pressable accessibilityRole="button" accessibilityLabel="I went over" onPress={onPress}
-        style={({ pressed }) => ({ paddingVertical: 12, paddingHorizontal: 20, borderRadius: 24, backgroundColor: t.soft, opacity: pressed ? 0.7 : 1 })}>
-        <T w="semibold" size={16}>I went over</T>
-      </Pressable>
-      <T size={15} color={t.muted}>{tripsSoFar(n)}</T>
+    <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
+      {btn('I went over', n, onPress)}
+      {btn(`I picked ${name} up`, picks, onPick)}
     </View>
   )
 }

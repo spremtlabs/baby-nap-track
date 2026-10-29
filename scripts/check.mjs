@@ -4,11 +4,12 @@
 // wake window set and cleared, editing a sleep, the 4pm example, the offer of one nap fewer,
 // the 5 October evening, a stretch with no nap logged, going out, the help chat, the store's rating
 // card asked for on the third day of naps,
-// the night, the chair method at bedtime, settling and the next morning, and at ten weeks, last night changed from
+// the night, a nap settled in the cot with the chair method on, the chair method at bedtime, settling and the next morning, and at ten weeks, last night changed from
 // the list and from the toast after up for the day, the sleep diary
 // for a consultant printed on A4, the next morning
 // with the night not logged and then added, a phone set up on version 1.0.0, the free week, the
-// nap times locked after it, a purchase and a pending one, and a shared log paid for on the other phone.
+// nap times locked after it, a purchase and a pending one, and a shared log paid for on the other phone,
+// where a nap started on one phone shows on the other within seconds, with no reload.
 // Then the same web build answers as an iPhone: the question
 // about usage counts, the free week started from the `7-day Trial` item or put off with Not now, an
 // App Store with no such item, and an Apple Account that had its week already.
@@ -132,12 +133,24 @@ if (PUPPETEER && !fails.length) {
   // A path from the folder the gate runs in. Handed to import() as it is, `node_modules/...` is read
   // as a package called node_modules, which stopped the gate on GitHub's runner from 1.0.5 on.
   const { default: puppeteer } = await import(pathToFileURL(resolve(PUPPETEER)).href)
-  const browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] })
+  // On a runner Chrome's own output goes into the log, so a browser that closes says why.
+  // 16 October 2026: on the Mac runner, whose user has no screen, Chrome could not reach the display
+  // and crashed with signal 11 a few walks in. The headless shell has no window code, so the Mac
+  // runner walks with it.
+  const mac = !!process.env.CI && process.platform === 'darwin'
+  const browser = await puppeteer.launch({ headless: mac ? 'shell' : true, args: ['--no-sandbox', ...(mac ? ['--disable-gpu'] : [])], dumpio: !!process.env.CI })
   const shots = process.env.SHOTS
   if (shots) mkdirSync(shots, { recursive: true })
 
+  // 16 October 2026: Chrome on the Mac runner closed partway through the walk twice and the log
+  // could not say where, so each walk is named as it opens, and a browser that goes away says so.
+  const t0 = Date.now()
+  let last = '', closing = false
+  browser.on('disconnected', () => { if (!closing) console.log(`The browser closed during the walk "${last}", ${Math.round((Date.now() - t0) / 1000)}s in.`) })
   // Each phone gets its own browser profile, so no two share storage.
   const open = async (name, { state = null, now, play = null }) => {
+    last = name
+    console.log(`walk ${name}, ${Math.round((Date.now() - t0) / 1000)}s`)
     const page = await (await browser.createBrowserContext()).newPage()
     page.errors = []
     page.on('pageerror', (e) => page.errors.push(String(e)))
@@ -160,14 +173,27 @@ if (PUPPETEER && !fails.length) {
     fail(page.label, `the screen never said "${want}"`)
     return false
   }
+  const press = (page, label) => page.evaluate((label) => {
+    const all = [...document.querySelectorAll('[role=button],[role=switch],[role=tab],button,[aria-label]')]
+    const el = all.find((e) => e.getAttribute('aria-label') === label) || all.find((e) => e.innerText && e.innerText.trim() === label)
+    if (!el) return false
+    el.click(); return true
+  }, label)
+  const pause = (ms = 400) => new Promise((r) => setTimeout(r, ms))
   const tap = async (page, label) => {
-    const ok = await page.evaluate((label) => {
-      const all = [...document.querySelectorAll('[role=button],[role=switch],button,[aria-label]')]
-      const el = all.find((e) => e.getAttribute('aria-label') === label) || all.find((e) => e.innerText && e.innerText.trim() === label)
-      if (!el) return false
-      el.click(); return true
-    }, label)
+    let ok = await press(page, label)
+    // From 1.0.41 Settings is a row in the Menu tab, and the chair method starts after four screens
+    // that end on Tonight or Tomorrow night.
+    if (!ok && label === 'Settings' && await press(page, 'Menu')) { await pause(); ok = await press(page, 'Settings') }
+    if (!ok && /^Start (tonight|tomorrow night)$/.test(label) && await press(page, 'Next')) {
+      await pause(); await press(page, 'Next'); await pause(); await press(page, 'Next'); await pause()
+      ok = await press(page, label === 'Start tonight' ? 'Tonight' : 'Tomorrow night')
+    }
+    // A control that is on Today, tapped from another tab, is reached the way a parent would.
+    if (!ok && await press(page, 'Today')) { await pause(); ok = await press(page, label) }
     if (!ok) fail(page.label, `nothing to tap called "${label}"`)
+    // Done closes Settings, which opens from the Menu, and the walk carries on from Today.
+    if (ok && (label === 'Done' || label === 'Got it')) { await pause(); await press(page, 'Today') }
     await new Promise((r) => setTimeout(r, 400))
   }
   const look = async (page, name) => {
@@ -193,6 +219,9 @@ if (PUPPETEER && !fails.length) {
       if (/Oisín|Cian/.test(JSON.stringify(e))) fail(page.label, `${e.event} carries the baby's name`)
       if (e.properties.product !== 'snug') fail(page.label, `${e.event} is not marked product: snug`)
     }
+    // 16 October 2026: no page was closed, so by the end 57 copies of the app ran at once, and
+    // Chrome on the Mac runner closed in the middle of the walk. A page is closed once it is read.
+    await page.browserContext().close()
   }
   // Sets a time field the way the phone's clock would.
   const setTime = async (page, id, hhmm) => {
@@ -206,7 +235,56 @@ if (PUPPETEER && !fails.length) {
     if (!ok) fail(page.label, `no time field called ${id}`)
     await new Promise((r) => setTimeout(r, 300))
   }
-  const absent = async (page, what) => { if ((await text(page)).includes(what)) fail(page.label, `the screen said "${what}"`) }
+  // Setup from 1.0.41: three welcome screens, then the name, the birthday `days` ago, the email or
+  // No thanks, and the usual day. The walk goes on from this morning's wake-up.
+  const born = (page, days) => page.evaluate((days) => {
+    const el = document.querySelector('[data-testid=born]')
+    const d = new Date(Date.now() - days * 864e5), v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v)
+    el.dispatchEvent(new Event('input', { bubbles: true }))
+  }, days)
+  const welcome = async (page) => {
+    await expect(page, 'Never guess the next nap again!')
+    await tap(page, 'Next')
+    await expect(page, 'Tap Start, or type it in later')
+    await tap(page, 'Next')
+    await expect(page, "It gets to know your baby's naps")
+  }
+  const toMorning = async (page, name, days, email = '') => {
+    await welcome(page)
+    await tap(page, "Let's get started!")
+    await expect(page, "What's your baby's name?")
+    await page.type('[data-testid=name]', name)
+    await tap(page, 'Next')
+    await expect(page, `When was ${name} born?`)
+    await born(page, days)
+    await tap(page, 'Next')
+    await expect(page, "Would you like our new sleep guides by email?")
+    if (email) { await page.type('[data-testid=email]', email); await tap(page, 'Next') } else await tap(page, 'No thanks')
+    await expect(page, `When does ${name}'s day start and end?`)
+    await expect(page, 'Typical naps at')
+    await absent(page, 'Day sleep to aim for')
+    await tap(page, 'Next')
+  }
+  // After the naps: how bedtimes go, how the naps run (from 1.0.43), then sharing, then the first
+  // nap time. `pick` is the way the naps run, from the last wake-up unless a walk says otherwise.
+  const toToday = async (page, name, pick) => {
+    await expect(page, 'How are bedtimes going?')
+    await tap(page, 'Pretty good')
+    await expect(page, `How should ${name}'s naps work?`)
+    await expect(page, 'You can change this in Settings.')
+    await expect(page, 'Whatever gets the night right')
+    await look(page, 'setup-style')
+    await tap(page, pick ?? `From when ${name} wakes`)
+    await expect(page, 'Send them a link, and every nap you log shows up on their phone too.')
+    await tap(page, 'Not now')
+  }
+  // Gone within three seconds, as `expect` waits three seconds for words to come. 16 October 2026:
+  // on the Mac runner the typed sheet was still closing 400 ms after Save, and a single read failed.
+  const absent = async (page, what) => {
+    for (let i = 0; i < 30; i++) { if (!(await text(page)).includes(what)) return; await new Promise((r) => setTimeout(r, 100)) }
+    fail(page.label, `the screen said "${what}"`)
+  }
   // Taps the control whose label starts with these words, for a row whose time is worked out.
   const tapStart = async (page, start) => {
     const ok = await page.evaluate((s) => { const el = [...document.querySelectorAll('[aria-label]')].find((e) => e.getAttribute('aria-label').startsWith(s)); if (!el) return false; el.click(); return true }, start)
@@ -237,25 +315,28 @@ if (PUPPETEER && !fails.length) {
       if (r.method() === 'POST') signups.push(JSON.parse(r.postData() || '{}'))
       r.respond({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' }, contentType: 'application/json', body: r.method() === 'OPTIONS' ? '' : '{"ok":true}' })
     })
-    await expect(p, "Let's get your first nap time.")
-    await expect(p, "We'll email you sleep tips as your baby grows.")
+    await welcome(p)
+    await look(p, 'setup-welcome')
+    await tap(p, "Let's get started!")
+    await expect(p, "What's your baby's name?")
     await look(p, 'setup-1')
     await p.type('[data-testid=name]', 'Cian')
+    await tap(p, 'Next')
+    await born(p, 76)
+    await tap(p, 'Next')
+    await expect(p, "We'll send you each new guide when it goes up.")
     await p.type('[data-testid=email]', 'nope')
     await expect(p, "That doesn't look like an email address yet.")
     await p.evaluate(() => { const el = document.querySelector('[data-testid=email]'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, ''); el.dispatchEvent(new Event('input', { bubbles: true })) })
     await p.type('[data-testid=email]', 'parent@example.com')
-    await p.evaluate(() => {
-      const el = document.querySelector('[data-testid=born]')
-      const d = new Date(Date.now() - 76 * 864e5), v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v)
-      el.dispatchEvent(new Event('input', { bubbles: true }))
-    })
     await tap(p, 'Next')
-    await expect(p, "Cian's day")
+    // 28 October 2026: setup shows the typical naps for the age and asks nothing about day sleep.
+    await expect(p, "When does Cian's day start and end?")
+    await expect(p, 'Typical naps at')
+    await absent(p, 'Day sleep to aim for')
     await look(p, 'setup-2')
     await tap(p, 'Next')
-    await expect(p, 'When did Cian wake up this morning?')
+    await expect(p, 'What time did Cian wake up this morning?')
     await setTime(p, 'wake-time', '07:30')
     await look(p, 'setup-3')
     await tap(p, 'Next')
@@ -268,14 +349,22 @@ if (PUPPETEER && !fails.length) {
     await tap(p, 'Save')
     await expect(p, '8:30 to 9:10am')
     await look(p, 'setup-4')
-    await tap(p, 'Done')
+    await tap(p, 'Next')
+    await toToday(p, 'Cian')
+    await expect(p, "Cian's first nap")
+    await look(p, 'setup-first-nap')
+    await tap(p, 'Go to Today')
     await expect(p, 'Tap when Cian falls asleep.')
     await expect(p, '8:30 to 9:10am')
-    // The week shows from the first day.
-    await expect(p, 'The line marks 5 hours of day sleep.')
+    await expect(p, "Learning Cian's naps, day 1 of 3")
     await expect(p, 'Woke up')
     await absent(p, 'Nap needed')
     await look(p, 'setup-done')
+    // The week shows from the first day, in the Menu from 1.0.41.
+    await tap(p, 'Menu')
+    await expect(p, 'The line marks 5 hours of day sleep.')
+    await look(p, 'menu')
+    await tap(p, 'Today')
     for (let i = 0; i < 20 && !signups.length; i++) await new Promise((r) => setTimeout(r, 100))
     if (signups.length !== 1 || signups[0].p_email !== 'parent@example.com' || signups[0].p_source !== 'setup') fail('setup', `setup sent the email as ${JSON.stringify(signups)}`)
     // Android asks nothing about counts and offers no free week item.
@@ -291,27 +380,51 @@ if (PUPPETEER && !fails.length) {
   {
     const now = new Date(); now.setHours(13, 0, 0, 0)
     const p = await open('setup-1pm', { now: now.getTime() })
-    await p.type('[data-testid=name]', 'Oisín')
-    await p.evaluate(() => {
-      const el = document.querySelector('[data-testid=born]')
-      const d = new Date(Date.now() - 188 * 864e5), v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v)
-      el.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await tap(p, 'Next')
-    await tap(p, 'Next')
+    await toMorning(p, 'Oisín', 188)
     await setTime(p, 'wake-time', '06:50')
     await tap(p, 'Next')
     await tap(p, 'Add a nap')
     await setTime(p, 'fell-asleep', '09:15')
     await setTime(p, 'woke-up', '10:20')
     await tap(p, 'Save')
-    await tap(p, 'Done')
+    await tap(p, 'Next')
+    await toToday(p, 'Oisín')
     await expect(p, 'Nap window open')
     // Up to 1.0.22 the next nap was the last of the day. From 1.0.23 a short nap goes in after it.
     await expect(p, '1 h 55 min to go, across 2 more naps.')
     await absent(p, 'Nap needed')
     await look(p, 'setup-1pm')
+    await done(p)
+  }
+
+  // The same times every day, from 1.0.43: set up at 11am after a 30 minute nap at 8:40. The next
+  // nap stays at its time for the age, 12:45pm at a 7am wake-up, and goes by its name. Settings
+  // carries the way the naps run and the times.
+  {
+    const now = new Date(); now.setHours(11, 0, 0, 0)
+    const p = await open('setup-clock', { now: now.getTime() })
+    await toMorning(p, 'Oisín', 188)
+    await setTime(p, 'wake-time', '06:50')
+    await tap(p, 'Next')
+    await tap(p, 'Add a nap')
+    await setTime(p, 'fell-asleep', '08:40')
+    await setTime(p, 'woke-up', '09:10')
+    await tap(p, 'Save')
+    await tap(p, 'Next')
+    await toToday(p, 'Oisín', 'Same times every day')
+    await expect(p, '12:45')
+    await expect(p, 'Lunchtime nap')
+    await absent(p, 'Nap needed')
+    await look(p, 'setup-clock')
+    await tap(p, 'Settings')
+    await expect(p, 'How naps work')
+    await expect(p, 'Naps at the times below.')
+    await expect(p, 'Each nap stays at its time, whatever time Oisín woke.')
+    await look(p, 'setup-clock-settings')
+    const style = await p.evaluate((k) => JSON.parse(localStorage.getItem(k)).baby.style, STORE_KEY)
+    if (style !== 'clock') fail('setup-clock', `setup saved the way the naps run as ${style}`)
+    await tap(p, 'From when Oisín wakes')
+    await expect(p, 'Awake before nap 1')
     await done(p)
   }
 
@@ -479,7 +592,7 @@ if (PUPPETEER && !fails.length) {
     const p = await open('typed-place', seed('morning'))
     const at = await p.evaluate(() => {
       const top = (w) => [...document.querySelectorAll('div')].filter((d) => d.textContent.trim() === w && d.children.length <= 1).map((d) => d.getBoundingClientRect().top)
-      return { link: top('Type what happened'), timer: document.querySelector('[data-testid=timer]')?.getBoundingClientRect().bottom ?? null, day: top('DAY SLEEP').concat(top('Day sleep'))[0] ?? null, n: [...document.querySelectorAll('[role=button]')].filter((e) => e.innerText.trim() === 'Type what happened').length }
+      return { link: top('Type what happened'), timer: document.querySelector('[data-testid=timer]')?.getBoundingClientRect().bottom ?? null, day: document.querySelector('[data-testid=today-card]')?.getBoundingClientRect().top ?? null, n: [...document.querySelectorAll('[role=button]')].filter((e) => e.innerText.trim() === 'Type what happened').length }
     })
     if (at.n !== 1) fail('typed-place', `Type what happened is on the screen ${at.n} times`)
     if (at.timer == null || at.day == null || !(at.link[0] > at.timer && at.link[0] < at.day)) fail('typed-place', `Type what happened is not between the timer and the day's sleep: ${JSON.stringify(at)}`)
@@ -829,7 +942,8 @@ if (PUPPETEER && !fails.length) {
   {
     const p = await open('4pm', seed('short'))
     await expect(p, 'Nap needed now')
-    await expect(p, 'Get Oisín to sleep now. A nap in the car or the buggy counts.')
+    await expect(p, 'Get Oisín to sleep now.')
+    await absent(p, 'overtired')
     await expect(p, 'Oisín needs 1 h 5 min more to make 3 hours.')
     await look(p, 'short-4pm')
     await done(p)
@@ -889,6 +1003,42 @@ if (PUPPETEER && !fails.length) {
     await done(p)
   }
 
+  // A nap in the cot while the chair method runs, from 1.0.35. 16 October 2026: at 4:02pm on night 6
+  // the screen said an overtired baby could nap in the car, with Oisín awake 23 minutes. The car or the
+  // buggy is for a nap tried in the cot for ages, so it comes after an hour of settling.
+  {
+    const p = await open('chair-nap', seed('chair-nap'))
+    await expect(p, 'Nap needed today')
+    await expect(p, 'Get Oisín down by 4:25pm.')
+    await expect(p, 'Awake 23 min')
+    await absent(p, 'overtired')
+    await look(p, 'chair-nap')
+    await tap(p, 'Oisín is in the cot for a nap')
+    await expect(p, 'Settling started at 4:02pm.')
+    await expect(p, 'Give Oisín up to an hour in the cot.')
+    await expect(p, 'Tap when Oisín is asleep.')
+    await absent(p, 'I went over')
+    await absent(p, 'overtired')
+    await look(p, 'chair-nap-settling')
+    await tap(p, "Oisín didn't go down")
+    await expect(p, 'Settling stopped.')
+    await expect(p, 'Get Oisín down by 4:25pm.')
+    await tap(p, 'Oisín is in the cot for a nap')
+    await tap(p, 'Fell asleep')
+    await expect(p, 'Nap started at 4:02pm.')
+    await expect(p, 'Napping')
+    await absent(p, 'Oisín is in the cot for a nap')
+    await done(p)
+    const h = await open('chair-nap-hour', seed('chair-nap-hour'))
+    await expect(h, 'Settling')
+    await expect(h, "You've been at it an hour. If Oisín is overtired, an easier nap in the car or the buggy is a good way to go.")
+    await look(h, 'chair-nap-hour')
+    await tap(h, 'Fell asleep')
+    await expect(h, 'Nap started at 5:03pm. Settling took 1 h 1 min.')
+    await expect(h, 'Napping')
+    await done(h)
+  }
+
   // The chair method: night 4 at bedtime with its picture and where to sit, the night
   // held back and let go, settling, asleep, Settings and how it works, the chart the next morning,
   // and the sheet that starts it from Settings. 11 October 2026: Start closed that sheet onto Today
@@ -900,6 +1050,9 @@ if (PUPPETEER && !fails.length) {
     await expect(p, 'Tap when Oisín is in the cot.')
     const tall = await p.evaluate(() => { const el = document.querySelector('[data-testid=chair-picture] svg'); return el ? el.getBoundingClientRect().height : 0 })
     if (tall < 100) fail('chair', `the picture is ${Math.round(tall)}px tall, so it did not draw`)
+    // 14 October 2026: the card at bedtime holds tonight's steps.
+    await expect(p, 'Put Oisín in the cot sleepy but still awake.')
+    await expect(p, 'If Oisín gets upset, go over to pat or shush, then sit back down.')
     await look(p, 'chair-bedtime')
     await tap(p, 'Stay by the cot one more night')
     await expect(p, 'Sit beside the cot again tonight.')
@@ -909,16 +1062,27 @@ if (PUPPETEER && !fails.length) {
     await expect(p, 'Stay by the cot one more night')
     await tap(p, 'Start the timer')
     await expect(p, 'Settling')
-    await expect(p, 'In the cot at 6:50pm.')
+    await expect(p, 'Settling started at 6:50pm.')
+    // From 14 October 2026: while the baby settles the card has no picture, only what to do.
+    if (await p.evaluate(() => !!document.querySelector('[data-testid=chair-picture]'))) fail('chair', 'the picture still shows while the baby settles')
+    await absent(p, 'In the cot at 6:50pm.')
     await expect(p, 'Tap when Oisín is asleep.')
     await expect(p, 'If Oisín gets upset, go over to pat or shush, then sit back down.')
-    await expect(p, 'Not yet')
+    await expect(p, 'None so far')
     await tap(p, 'I went over')
     await tap(p, 'I went over')
     await expect(p, 'Twice so far')
     await look(p, 'chair-settling')
+    // 14 October 2026: what to do when it gets hard is one tap away while the baby settles, and
+    // each pick-up is counted beside each time the parent went over.
+    await expect(p, 'If it gets hard')
+    await tap(p, 'Crying hard')
+    await expect(p, 'Pick Oisín up for a cuddle until the crying stops. Then put Oisín back in the cot awake and sit back down.')
+    await tap(p, 'I picked Oisín up')
+    await expect(p, 'Once so far')
+    await look(p, 'chair-settling-help')
     await tap(p, 'Fell asleep')
-    await expect(p, 'Oisín was asleep in under a minute. You went over twice.')
+    await expect(p, "Oisín was asleep in under a minute. That's night 4 done!")
     await expect(p, 'Down for the night')
     await absent(p, 'Settling')
     await expect(p, 'How much did Oisín cry while settling?')
@@ -939,6 +1103,8 @@ if (PUPPETEER && !fails.length) {
     await look(p, 'chair-how')
     await done(p)
     const m = await open('chair-morning', seed('chair-morning'))
+    // From 1.0.41 the chart and the morning's coaching are on the Night tab.
+    await tap(m, 'Night')
     await expect(m, 'Minutes to fall asleep, one bar a night')
     // 11 October 2026: the lines under the chart coach, and the card holds one finding.
     await expect(m, "31 min on the first night halfway to the door. That's still 15 min faster than night 1!")
@@ -948,8 +1114,11 @@ if (PUPPETEER && !fails.length) {
     await absent(m, 'You went over')
     await absent(m, 'one more night')
     await absent(m, 'Tonight you sit')
+    await look(m, 'chair-morning-night')
+    await tap(m, 'Today')
     await expect(m, 'Chair method, night 5 of 13')
-    await expect(m, 'Sit halfway to the door tonight. Bedtime is 7pm.')
+    await expect(m, "Sit halfway to the door again tonight. You're doing great!")
+    await expect(m, 'Sleep training with a parent in the room worked in all four studies that tested it.')
     await look(m, 'chair-morning-top')
     await scrollTo(m, 'Chair method')
     await look(m, 'chair-morning')
@@ -958,30 +1127,45 @@ if (PUPPETEER && !fails.length) {
     // note at the top of Today follows the tap.
     const v = await open('chair-move', seed('chair-move'))
     await expect(v, 'Chair method, night 4 of 13')
-    await expect(v, 'Sit halfway to the door tonight. Bedtime is 7pm.')
+    await expect(v, "That's 3 nights done! Sit halfway to the door tonight.")
+    await tap(v, 'Night')
     await expect(v, 'Brilliant! Oisín fell asleep 22 min faster than on night 1.')
     await expect(v, 'You can take one more night by the cot. The HSE says to move every 3 to 4 nights.')
     await scrollTo(v, 'Chair method')
     await look(v, 'chair-move')
     await tap(v, 'Stay by the cot one more night')
     await expect(v, "You're taking one more night by the cot.")
+    await tap(v, 'Today')
     await expect(v, 'Chair method, night 4 of 14')
-    await expect(v, 'Sit beside the cot tonight. Bedtime is 7pm.')
+    await expect(v, "Sit beside the cot again tonight. You've got this!")
+    await tap(v, 'Night')
     await tap(v, 'Move your chair tonight')
-    await expect(v, 'Sit halfway to the door tonight. Bedtime is 7pm.')
+    await tap(v, 'Today')
+    await expect(v, "That's 3 nights done! Sit halfway to the door tonight.")
     await absent(v, "You're taking one more night by the cot.")
     await done(v)
     const s = await open('chair-start', seed('morning'))
     await tap(s, 'Settings')
     await absent(s, 'The HSE suggests it from six months.')
     await expect(s, 'You sit by the cot while Oisín falls asleep, and move a bit closer to the door every three nights.')
+    // From 1.0.41 four screens lead in: who it suits, the nights, whether it works, and when to start.
     await tap(s, 'Start the chair method')
-    await expect(s, 'Put Oisín in the cot awake.')
-    await expect(s, "The HSE says the first few nights are hard, and you'll start to see a change within a week or so.")
-    await expect(s, 'Sleep training brought easier bedtimes and fewer night wakings in 49 of 52 studies. Over 2,500 babies and toddlers took part.')
-    await expect(s, 'Four of those studies had a parent stay in the room, and it worked in all four.')
-    await look(s, 'chair-sheet')
-    await tap(s, 'Start tonight')
+    await expect(s, 'Try the chair method!')
+    await expect(s, "Lots of parents use it when cry it out isn't for them.")
+    await absent(s, 'The HSE suggests it from six months.')
+    await look(s, 'chair-flow-1')
+    await tap(s, 'Next')
+    await expect(s, 'Every three nights you move a bit closer to the door')
+    await expect(s, 'Say goodnight and leave')
+    await look(s, 'chair-flow-2')
+    await tap(s, 'Next')
+    await expect(s, 'Does it work?')
+    await expect(s, '49 of 52 studies')
+    await look(s, 'chair-flow-3')
+    await tap(s, 'Next')
+    await expect(s, 'When would you like to start?')
+    await look(s, 'chair-flow-4')
+    await tap(s, 'Tonight')
     await expect(s, 'Well done for starting!')
     await expect(s, 'Tonight is night 1 of 13. Bedtime is 7pm.')
     await expect(s, 'Put Oisín in the cot awake at bedtime and tap Start.')
@@ -991,9 +1175,109 @@ if (PUPPETEER && !fails.length) {
     await tap(s, 'Got it')
     await absent(s, 'Well done for starting!')
     await expect(s, 'Chair method, night 1 of 13')
-    await expect(s, 'Sit beside the cot tonight. Bedtime is 7pm.')
+    await expect(s, "Sit right beside the cot tonight. You've got this!")
     await look(s, 'chair-day')
     await done(s)
+    // 12 October 2026: the note says where to sit with a cheer and a finding, and leaves bedtime to
+    // the screen. In the morning it has no button; once the day's naps are done it puts the baby in
+    // the cot, earlier than the timer would.
+    const d2 = await open('chair-day2', seed('chair-day2'))
+    await expect(d2, 'Chair method, night 2 of 13')
+    await expect(d2, "Sit beside the cot again tonight. You've got this!")
+    await expect(d2, 'Sleep training with a parent in the room worked in all four studies that tested it.')
+    // The bedtime cot button waits for the day's naps to be done. From 1.0.35 a nap has its own.
+    if (await d2.evaluate(() => [...document.querySelectorAll('[role=button]')].some((e) => e.innerText.trim() === 'Oisín is in the cot'))) fail('chair-day2', 'the bedtime cot button shows with naps to come')
+    await expect(d2, 'Oisín is in the cot for a nap')
+    // 29 October 2026: the day card sits under Type what happened and Going out later?. In 1.0.41 to
+    // 1.0.43 it sat between them and the timer and pushed them under the help button.
+    const below = await d2.evaluate(() => {
+      const chip = [...document.querySelectorAll('[role=button]')].find((e) => e.innerText.trim() === 'Type what happened')?.getBoundingClientRect().top
+      const note = document.querySelector('[data-testid=chair-day]')?.getBoundingClientRect().top
+      return { chip: chip ?? null, note: note ?? null }
+    })
+    if (below.chip == null || below.note == null || !(below.chip < below.note)) fail('chair-day2', `the chair method's day card is not under Type what happened: ${JSON.stringify(below)}`)
+    await look(d2, 'chair-day2')
+    // 14 October 2026: tonight's plan opens from the note, with the night's line, the steps and what
+    // to do when it gets hard.
+    await tap(d2, "Tonight's plan")
+    await expect(d2, 'Night 1 is behind you! Tonight, pat Oisín a little less and shush a little more.')
+    await expect(d2, 'Shush, pat or stroke Oisín, and stop now and then.')
+    await expect(d2, 'If it gets hard')
+    await tap(d2, 'Unwell')
+    await expect(d2, 'Look after Oisín the way you always would. Once Oisín is better, start again beside the cot.')
+    await look(d2, 'chair-tonight-2')
+    await tap(d2, 'Today')
+    await absent(d2, 'If it gets hard')
+    await done(d2)
+    for (const n of [1, 4, 7, 10, 13]) {
+      const q = await open(`chair-n${n}`, seed(`chair-n${n}`))
+      await tap(q, "Tonight's plan")
+      await expect(q, 'If it gets hard')
+      await look(q, `chair-tonight-${n}`)
+      await done(q)
+    }
+    // 14 October 2026: the plan is for bedtime only. At 6:34am, awake since 6, the timer is the
+    // baby back asleep, with no picture and no count. Up to 1.0.32 it put the baby in the cot for night 4.
+    const e = await open('chair-early', seed('chair-early'))
+    await expect(e, 'Tap when Oisín is back asleep.')
+    await absent(e, 'Tap when Oisín is in the cot.')
+    await absent(e, 'Chair method, night 4')
+    await look(e, 'chair-early')
+    await tap(e, 'Start the timer')
+    await expect(e, 'Back asleep at 6:34am.')
+    await absent(e, 'Settling')
+    await absent(e, 'In the cot at')
+    await done(e)
+    const k = await open('chair-clock', seed('chair-clock'))
+    await expect(k, "Sit beside the cot again tonight. You've got this!")
+    await absent(k, 'Tap when Oisín is in the cot.')
+    await look(k, 'chair-clock')
+    await tap(k, 'Oisín is in the cot')
+    await expect(k, 'Settling')
+    await expect(k, 'Settling started at 5:20pm.')
+    await expect(k, 'Tap when Oisín is asleep.')
+    await absent(k, 'Oisín is in the cot')
+    await look(k, 'chair-clock-settling')
+    await tap(k, 'Fell asleep')
+    await expect(k, 'Down for the night')
+    await absent(k, 'Settling')
+    await done(k)
+    // 12 October 2026: bedtime is its own row and sheet while the plan runs, apart from the night: the
+    // cot time, asleep, the trips over, the pick-ups and a note, read by the chart the next morning.
+    const ns = await open('chair-bedtime-sheet', seed('chair-day2'))
+    await scrollTo(ns, 'Last night')
+    await expect(ns, 'In the cot ')
+    await look(ns, 'chair-bedtime-row')
+    await tapStart(ns, 'Bedtime, ')
+    await expect(ns, 'Chair method, night 1')
+    await expect(ns, '40 min to fall asleep')
+    await absent(ns, 'In the cot has to come before Asleep.')
+    await tap(ns, 'Picked up, one more')
+    await ns.type('[data-testid=bed-note]', 'Teething, gums red')
+    await look(ns, 'chair-bedtime-sheet')
+    // A cot time after asleep is said, and Save waits.
+    await setTime(ns, 'bed-cot', '23:00')
+    await expect(ns, 'In the cot has to come before Asleep.')
+    if (!(await disabled(ns, 'Save'))) fail('chair-bedtime-sheet', 'Save could be tapped with the cot time after asleep')
+    await setTime(ns, 'bed-cot', '18:10')
+    await absent(ns, 'In the cot has to come before Asleep.')
+    await tap(ns, 'Save')
+    await expect(ns, 'Saved.')
+    await tap(ns, 'Night')
+    await expect(ns, 'You picked Oisín up once.')
+    await tap(ns, 'Today')
+    await tapStart(ns, 'Bedtime, ')
+    const kept = await ns.evaluate(() => document.querySelector('[data-testid=bed-note]')?.value)
+    if (kept !== 'Teething, gums red') fail('chair-bedtime-sheet', `the note opened again as "${kept}"`)
+    await expect(ns, '6:10pm')
+    await tap(ns, 'Close')
+    // Last night keeps to the night.
+    await tapStart(ns, 'Last night, ')
+    await expect(ns, 'Down for the night')
+    await absent(ns, 'Picked up')
+    await absent(ns, 'Notes on bedtime')
+    await tap(ns, 'Close')
+    await done(ns)
     // Started at 6:50pm with bedtime at 7, the sheet says it is bedtime now and Today has the picture.
     const b = await open('chair-start-bedtime', seed('chair-eve'))
     await tap(b, 'Settings')
@@ -1022,13 +1306,117 @@ if (PUPPETEER && !fails.length) {
     await expect(y, 'The HSE suggests it from six months.')
     await look(y, 'chair-young-settings')
     await tap(y, 'Start the chair method')
-    await expect(y, 'Put Cian in the cot awake.')
+    await expect(y, 'The HSE suggests it from six months.')
     await tap(y, 'Start tonight')
     await expect(y, 'Well done for starting!')
     await expect(y, 'Tonight is night 1 of 13.')
     await tap(y, 'Got it')
     await expect(y, 'Chair method, night 1 of 13')
     await done(y)
+  }
+
+  // 1.0.41, 28 October 2026: three tabs, the chair method line closed
+  // until bedtime, the Night tab's way into the chair method, the Menu's pages about the naps, the
+  // card when the age moves on to the next wake windows, and Tough in setup.
+  {
+    // The X keeps the chair line off Today for the rest of the day, through a reload.
+    const c = await open('home-chair-x', seed('chair-day2'))
+    await expect(c, 'Chair method, night 2 of 13')
+    await tap(c, 'Hide until bedtime')
+    await absent(c, 'Chair method, night 2 of 13')
+    await c.reload({ waitUntil: 'networkidle0' })
+    await expect(c, 'Tap when Oisín falls asleep.')
+    await absent(c, 'Chair method, night 2 of 13')
+    await look(c, 'home-chair-hidden')
+    // Night still has tonight's plan.
+    await tap(c, 'Night')
+    await expect(c, 'Chair method, night 2 of 13')
+    await expect(c, 'If it gets hard')
+    await done(c)
+    // With no chair method, Night offers it, and the four screens start it.
+    const n = await open('home-night', seed('morning'))
+    await tap(n, 'Night')
+    await expect(n, 'Bedtimes tough?')
+    await expect(n, 'Last night')
+    await look(n, 'home-night-off')
+    await tap(n, 'See how it works')
+    await expect(n, 'Try the chair method!')
+    await tap(n, 'Next'); await tap(n, 'Next'); await tap(n, 'Next')
+    await tap(n, 'Tomorrow night')
+    await expect(n, 'Tomorrow is night 1 of 13.')
+    await tap(n, 'Got it')
+    await tap(n, 'Night')
+    await expect(n, 'Chair method, night 1 of 13')
+    await absent(n, 'Bedtimes tough?')
+    await done(n)
+    // The Menu: the week, why the next nap is when it is, how naps change, and Settings.
+    const m = await open('home-menu', seed('morning'))
+    await tap(m, 'Menu')
+    await expect(m, 'The line marks')
+    await tap(m, 'Why the next nap is at 12:20pm')
+    await expect(m, 'Why 12:20pm?')
+    await expect(m, 'At 6 months most babies can stay awake for 2 h to 3 h.')
+    await look(m, 'home-why')
+    await tap(m, 'Close')
+    await tap(m, 'How naps change as Oisín grows')
+    await expect(m, 'From 8 months')
+    await tap(m, 'Close')
+    await tap(m, 'Settings')
+    await expect(m, 'Privacy')
+    await done(m)
+    // From 1.0.42 a past day in the week opens a sheet that marks it as not tracked. The row reads
+    // Not tracked, the mark rides on the baby so a shared log carries it, and it holds through a
+    // reload until Count this day again.
+    const k = await open('week-not-tracked', seed('morning'))
+    await tap(k, 'Menu')
+    const dayTap = () => k.evaluate(() => { const el = document.querySelector('[data-testid=week-day-1]'); if (!el) return false; el.click(); return true })
+    if (!await dayTap()) fail('week-not-tracked', 'no past day to tap in This week')
+    await pause()
+    await expect(k, 'of naps logged.')
+    await look(k, 'week-day-sheet')
+    await tap(k, "We didn't track this day")
+    await expect(k, 'Not tracked')
+    const marked = await k.evaluate((key) => JSON.parse(localStorage.getItem(key)).baby.skipDays, STORE_KEY)
+    if (!Array.isArray(marked) || marked.length !== 1) fail('week-not-tracked', `the day was kept as ${JSON.stringify(marked)}`)
+    await look(k, 'week-not-tracked')
+    await k.reload({ waitUntil: 'networkidle0' })
+    await tap(k, 'Menu')
+    await expect(k, 'Not tracked')
+    await dayTap(); await pause()
+    await tap(k, 'Count this day again')
+    await absent(k, 'Not tracked')
+    await done(k)
+    // The age moved on since this phone last looked: the card says what changed, once.
+    const x = seed('morning'), xs = JSON.parse(x.state)
+    const a = await open('home-age', { now: x.now, state: JSON.stringify({ ...xs, bandSeen: 26, learnt: true }) })
+    await expect(a, 'Happy 6 months, Oisín!')
+    await expect(a, 'The gap between naps was 1 h 45 min to 2 h 30 min. From today it\'s 2 h to 3 h.')
+    await look(a, 'home-age')
+    await tap(a, 'Not ready yet? Keep the old times for a week')
+    await expect(a, 'Oisín keeps the old nap times for a week.')
+    await absent(a, 'Happy 6 months, Oisín!')
+    const kept = await a.evaluate((k) => JSON.parse(localStorage.getItem(k)).baby.keepBand, STORE_KEY)
+    if (!kept || kept.w !== 26) fail('home-age', `Keep the old times kept ${JSON.stringify(kept)}`)
+    await done(a)
+    // Tough in setup goes through the chair method and starts it.
+    const now = new Date(); now.setHours(10, 0, 0, 0)
+    const t = await open('setup-tough', { now: now.getTime() })
+    await toMorning(t, 'Oisín', 200)
+    await setTime(t, 'wake-time', '07:00')
+    await tap(t, 'Next')
+    await tap(t, 'No naps yet')
+    await tap(t, "Tough. We'd love some help")
+    await expect(t, 'Try the chair method!')
+    await tap(t, 'Next'); await tap(t, 'Next'); await tap(t, 'Next')
+    await tap(t, 'Tonight')
+    await expect(t, 'Does anyone else put Oisín down for naps?')
+    await tap(t, 'Not now')
+    await expect(t, 'Well done for starting!')
+    await tap(t, 'Got it')
+    // Awake 3 hours at 10am, the nap is due now, so the first nap screen closes itself.
+    await absent(t, "Oisín's first nap")
+    await expect(t, 'Chair method, night 1 of 13')
+    await done(t)
   }
 
   // The parent's email in Settings, for a phone that left it out of setup: a bad address turned
@@ -1039,7 +1427,7 @@ if (PUPPETEER && !fails.length) {
     const cors = { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' }
     p.on('request', (r) => (r.url().includes('/rpc/sleep_signup') ? r.respond({ status: 200, headers: cors, contentType: 'application/json', body: r.method() === 'OPTIONS' ? '' : '{"ok":true}' }) : r.continue()))
     await tap(p, 'Settings')
-    await expect(p, "Add your email and we'll send you sleep tips as Oisín grows.")
+    await expect(p, "Add your email and we'll send you each new sleep guide when it goes up.")
     const put = (v) => p.evaluate((v) => {
       const el = document.querySelector('[data-testid=email-settings]')
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v)
@@ -1050,7 +1438,7 @@ if (PUPPETEER && !fails.length) {
     await expect(p, "That doesn't look like an email address.")
     await put('parent@example.com')
     await tap(p, 'Save')
-    await expect(p, "We have your email, and we'll send you sleep tips as Oisín grows.")
+    await expect(p, "We have your email, and we'll send you each new sleep guide when it goes up.")
     await done(p)
   }
 
@@ -1058,6 +1446,7 @@ if (PUPPETEER && !fails.length) {
   {
     const now = new Date(); now.setHours(10, 0, 0, 0)
     const p = await open('free-week', { now: now.getTime(), play: { price: '€9.99' } })
+    await welcome(p)
     await expect(p, 'Baby Nap Track is free for 7 days. Then the nap times are €9.99, once.')
     // On Android the week starts by itself, as it always has.
     await expectSent(p, 'snug_free_week_started', { price: '€9.99' })
@@ -1146,20 +1535,15 @@ if (PUPPETEER && !fails.length) {
   // free week. Nothing reaches PostHog before a yes, and the nap times wait for the free week.
   const IOS = { price: '€9.99', os: 'ios', week: true }
   const babyAndMorning = async (p, name) => {
-    await expect(p, "Let's get your first nap time.")
-    await p.type('[data-testid=name]', name)
-    await p.evaluate(() => {
-      const el = document.querySelector('[data-testid=born]')
-      const d = new Date(Date.now() - 76 * 864e5), v = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, v)
-      el.dispatchEvent(new Event('input', { bubbles: true }))
-    })
-    await tap(p, 'Next')
-    await tap(p, 'Next')
+    await toMorning(p, name, 76)
     await setTime(p, 'wake-time', '07:30')
     await tap(p, 'Next')
     await expect(p, `Has ${name} had a nap since 7:30am?`)
     await tap(p, 'No naps yet')
+    await expect(p, 'How are bedtimes going?')
+    await tap(p, 'Pretty good')
+    await tap(p, `From when ${name} wakes`)
+    await tap(p, 'Not now')
   }
   const nothingSent = async (p, when) => { const e = await sent(p); if (e.length) fail(p.label, `sent ${e.map((x) => x.event).join(', ')} to PostHog ${when}`) }
   // The switch as drawn, its knob to the right when on, and the answer the app saved. The web build
@@ -1308,8 +1692,8 @@ if (PUPPETEER && !fails.length) {
       await tap(a, 'Done')
       const bNow = seed('morning').now
       const b = await open('share-b', { now: bNow, play: { price: '€9.99' }, state: JSON.stringify({ paid: { price: '€9.99', trialFrom: bNow - 9 * DAY, owned: false, sharedPaid: false } }) })
-      await expect(b, "Let's get your first nap time.")
-      await tap(b, 'Someone sent you a link? Join their log')
+      await welcome(b)
+      await tap(b, 'Did someone send you a link? Join their log')
       await b.waitForSelector('[data-testid=join-link]', { timeout: 5000 })
       await b.type('[data-testid=join-link]', `https://babynaptrack.com/join/#${key}`)
       await tap(b, 'Join')
@@ -1318,10 +1702,12 @@ if (PUPPETEER && !fails.length) {
       await expect(b, "You're logging Oisín's sleep with everyone who has the link.")
       await absent(b, 'Your free week of nap times is up')
       await expectSent(b, 'snug_share_joined')
+      // The nap started on the first phone shows on the second without a reload, from the log's
+      // ping. Until 15 October 2026 it waited for the next minute's read, and this walk reloaded it.
       await tap(a, 'Start the timer')
-      await new Promise((r) => setTimeout(r, 4000))
-      await b.reload({ waitUntil: 'networkidle0' })
-      await expect(b, 'Napping')
+      let live = false
+      for (let i = 0; i < 40 && !live; i++) { live = (await text(b)).includes('Napping'); if (!live) await new Promise((r) => setTimeout(r, 200)) }
+      if (!live) fail('share-b', 'the nap started on the other phone did not show within 8 seconds without a reload')
       await look(b, 'shared')
       await done(a); await done(b)
       await fetch('https://eynuujdjarqnwkjofrpw.supabase.co/rest/v1/rpc/sleep_forget', {
@@ -1330,6 +1716,7 @@ if (PUPPETEER && !fails.length) {
     }
   }
 
+  closing = true
   await browser.close()
   server.close()
 }
@@ -1339,4 +1726,4 @@ if (fails.length) {
   for (const f of fails) console.log('  ' + f)
   process.exit(1)
 }
-console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings with the aim, the nap count and a wake window set and cleared, adding a sleep, the rating card asked for on the third day of naps, the 4pm example, a short morning nap, a short nap with one nap left and the two ways to make it up, the offer of one nap fewer, the night, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, the chair method started in the day, at bedtime and after it with what to do first, the morning of a move day with one more night picked and let go, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, and what PostHog hears at each step')
+console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings with the aim, the nap count and a wake window set and cleared, adding a sleep, the rating card asked for on the third day of naps, the 4pm example, a short morning nap, a short nap with one nap left and the two ways to make it up, the offer of one nap fewer, the night, a nap settled in the cot with the chair method on and the car or the buggy after an hour, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, the chair method started in the day, at bedtime and after it with what to do first, the cot button once the naps are done, bedtime put in on its own with the cot time, pick-ups and a note, the morning of a move day with one more night picked and let go, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across and a nap on one showing on the other without a reload, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, and what PostHog hears at each step')

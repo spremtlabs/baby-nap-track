@@ -3,7 +3,7 @@
 // something else fails here before it reaches a phone.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { afterAt, asLogged, dayFloor, engine, HOUR, kindFor, lastAt, MIN, morningAt, moveStart, newSleep, pickEnd, pickStart, withNoNap, type Sleep } from '../src/lib/engine.ts'
+import { afterAt, asLogged, dayFloor, ended, engine, HOUR, kindFor, lastAt, MIN, morningAt, moveStart, newSleep, pickEnd, pickStart, withNoNap, withSkipDay, type Sleep } from '../src/lib/engine.ts'
 import { chairTap } from '../src/lib/chair.ts'
 import { daySleep, gapDraft, hero, mainAction, nightAddWake, nightDraft, nightPick, nightProblem, nightSave, nightSum, outView, reminder, savedLine, sleepNotice, todayRows, week as weekOf } from '../src/lib/model.ts'
 import { NO_SHOP, TRIAL_NAME, TRIAL_SKU, gate, isLocked, outcomeLine, setupLine, shopGroup, trialEnd, trialNote, weekLine, weekScreen, type Paid } from '../src/lib/shop.ts'
@@ -24,12 +24,13 @@ test('the morning: the next window, its time and the day so far', () => {
   assert.equal(s.say, '1 h 57 min to go, across 2 more naps.')
 })
 
-test('a missed window says now, and the car or the buggy, while naps are still to come', () => {
+test('a missed window says now while naps are still to come', () => {
   for (const [h, m] of [[12, 35], [14, 5]]) {
     const s = screen(week(), at(0, h, m))
     assert.equal(s.eyebrow, 'Nap time')
     assert.equal(s.big, 'Now')
-    assert.equal(s.sub, 'The window closed at 12:30pm. Put Oisín down as soon as you can. A nap in the car or the buggy counts.')
+    // From 1.0.35 the car or the buggy comes after an hour of settling a nap, in test/chair.test.ts.
+    assert.equal(s.sub, 'The window closed at 12:30pm. Put Oisín down as soon as you can.')
   }
   const late = screen(week(), at(0, 16, 35))
   assert.equal(late.eyebrow, 'Nap needed now')
@@ -40,7 +41,9 @@ test('at 4pm after a short day: the whole amount he still needs, now', () => {
   const s = screen(week(true), at(0, 16, 0))
   assert.equal(s.eyebrow, 'Nap needed now')
   assert.equal(s.big, '1 h 5 min')
-  assert.equal(s.sub, 'Get Oisín to sleep now. A nap in the car or the buggy counts.')
+  assert.equal(s.sub, 'Get Oisín to sleep now.')
+  // 14 October 2026: every nap time says how long the baby has been awake. Up to 1.0.32 this one did not.
+  assert.equal(hero(engine(OISIN, week(), at(0, 16, 35))).note, 'Awake 6 h 34 min')
   assert.equal(s.say, 'Oisín needs 1 h 5 min more to make 3 hours.')
 })
 
@@ -60,10 +63,30 @@ test('a nap after 4pm gets a time to wake Oisín at the end of the naps, 5pm for
   assert.equal(todayRows(at5).rows.find((r) => r.title === 'Optional wake')?.right, 'now')
 })
 
+// 29 October 2026: a nap at 1:56pm showed `Optional wake at 5pm` at 2:13pm, with the nap 17 min
+// old. The screen waits until the nap could run into 5pm, and the 5pm reminder stays booked.
+test('a nap at 1:56pm says nothing about 5pm until 4:30pm, and the reminder still waits at 5pm', () => {
+  const log = [...week(true).filter((x) => x.s < at(0, 13, 0)), sleep(at(0, 13, 56), null, 'nap')]
+  const E = engine(OISIN, log, at(0, 14, 13))
+  assert.equal(hero(E).wake, null)
+  assert.ok(!todayRows(E).rows.some((r) => r.title === 'Optional wake'))
+  assert.ok(!daySleep(E).say.includes('wake-up'))
+  assert.ok(!daySleep(E).blocks.some((b) => b.plan && b.e === at(0, 17, 0)))
+  assert.equal(sleepNotice(E)?.body, 'Fell asleep at 1:56pm.')
+  assert.equal(reminder(E, 15)?.at, at(0, 17, 0))
+  assert.equal(reminder(E, 15)?.title, 'Optional wake')
+  assert.equal(hero(engine(OISIN, log, at(0, 16, 29))).wake, null)
+  assert.deepEqual(hero(engine(OISIN, log, at(0, 16, 35))).wake, { at: at(0, 17, 0), now: false, left: 'in 25 min' })
+  // A nap at 4:15pm would run past 5pm at its usual length, so the card shows from the start.
+  const late = [...week(true).filter((x) => x.s < at(0, 13, 0)), sleep(at(0, 16, 15), null, 'nap')]
+  assert.deepEqual(hero(engine(OISIN, late, at(0, 16, 16))).wake, { at: at(0, 17, 0), now: false, left: 'in 44 min' })
+})
+
 test('a parent who sets no naps after 5:15pm gets 5:15pm, and a morning nap gets no wake time', () => {
   const baby = { ...OISIN, napsEnd: 17 * 60 + 15 }
   const log = [...week(true), sleep(at(0, 15, 30), null, 'nap')]
-  assert.equal(hero(engine(baby, log, at(0, 16, 0))).wake?.at, at(0, 17, 15))
+  assert.equal(engine(baby, log, at(0, 16, 0)).wakeAt(), at(0, 17, 15))
+  assert.equal(hero(engine(baby, log, at(0, 16, 50))).wake?.at, at(0, 17, 15))
   const morning = [...week(true).filter((x) => x.s < at(0, 9, 0)), sleep(at(0, 9, 0), null, 'nap')]
   assert.equal(hero(engine(OISIN, morning, at(0, 9, 30))).wake, null)
   assert.equal(engine(OISIN, morning, at(0, 9, 30)).wakeAt(), null)
@@ -124,6 +147,34 @@ test('the day graph labels the naps ahead with their times and never overlaps th
   for (let i = 1; i < xs.length; i++) assert.ok(xs[i] - xs[i - 1] > 8)
 })
 
+// 11 October 2026: a nap from 4:30pm still going at 10pm read as napping, and the day graph planned
+// naps at 12:35am, 3:35am, 6:35am and on to 3:35pm. Bedtime is where the day ends.
+test('a nap still going at bedtime is the night, at the bedtime set or one brought forward', () => {
+  const log = [...week(true), sleep(at(0, 16, 30), null, 'nap')]
+  assert.equal(engine(AT_FIVE_MONTHS, log, at(0, 18, 55)).phase(), 'nap')
+  const E = engine(AT_FIVE_MONTHS, log, at(0, 19, 0))
+  assert.equal(E.phase(), 'night')
+  assert.deepEqual(E.planNaps(), [])
+  assert.equal(daySleep(E).planned, false)
+  assert.equal(hero(engine(AT_FIVE_MONTHS, log, at(0, 22, 0))).sub, 'Down for the night at 4:30pm.')
+  const early = { ...AT_FIVE_MONTHS, route: { day: dayFloor(AT_FIVE_MONTHS, at(0, 18, 30)), pick: 'bed' as const, by: 30 } }
+  assert.equal(engine(early, log, at(0, 18, 25)).phase(), 'nap')
+  assert.equal(engine(early, log, at(0, 18, 30)).phase(), 'night')
+  // A tap at 10pm is a waking, and the log keeps the sleep as the night.
+  const woke = ended(AT_FIVE_MONTHS, log, log[log.length - 1].id, false, at(0, 22, 0))
+  assert.equal(woke[woke.length - 1].kind, 'night')
+  assert.equal(engine(AT_FIVE_MONTHS, woke, at(0, 22, 1)).phase(), 'waking')
+})
+
+// Up to 1.0.30 a nap still going after 10pm took tomorrow's bedtime from the clock.
+test('the naps planned stop at bedtime, with a 10:30pm bedtime too', () => {
+  const late = { ...AT_FIVE_MONTHS, bed: 22 * 60 + 30 }
+  const E = engine(late, [...week(true), sleep(at(0, 20, 0), null, 'nap')], at(0, 22, 5))
+  assert.equal(E.phase(), 'nap')
+  assert.deepEqual(E.planNaps(), [])
+  assert.equal(daySleep(E).planned, false)
+})
+
 // 4 October 2026: an app set up at midday said a nap was needed now, because setup only asked
 // when the baby last woke and counted no naps since the morning. The morning's nap could not be
 // added so it counted. The morning is now part of setup and of the log.
@@ -153,6 +204,28 @@ test('a day with nothing logged since last night asks about the morning before i
   }
   // Before the morning starts, it is still last night, and nothing asks.
   assert.equal(hero(engine(OISIN, yesterdayOnly(), at(1, 1, 0))).ask, '')
+})
+
+// 26 October 2026: a parent on an iPhone timed the first nap without logging the morning, and the
+// nap was gone from Today. Up to 1.0.39 a missing morning hid the whole list and asked for the
+// wake-up. A nap logged today means the baby was up, so the morning is put one wake window before
+// it and the list stays, with the wake-up row asking for its time.
+test('a nap timed with no morning logged stays on Today and the next nap time comes from it', () => {
+  const nap = sleep(at(1, 9, 30), at(1, 10, 15), 'nap')
+  const E = engine(OISIN, [...yesterdayOnly(), nap], at(1, 11, 0)), x = hero(E), rows = todayRows(E).rows
+  assert.equal(E.unknownMorning(), false)
+  assert.equal(x.ask, '')
+  assert.ok(x.big.length > 0)
+  const w = rows.find((r) => r.wake)
+  assert.equal(`${w?.title} ${w?.sub} ${w?.right}`, 'Woke up Not logged Add')
+  assert.ok(rows.some((r) => r.title === 'Nap' && r.edit === nap.id))
+  // Still napping, the same: the timer runs and the list holds the nap.
+  const run = engine(OISIN, [...yesterdayOnly(), sleep(at(1, 9, 30), null, 'nap')], at(1, 9, 50))
+  assert.equal(run.unknownMorning(), false)
+  assert.ok(todayRows(run).rows.some((r) => r.title === 'Napping'))
+  // The wake-up typed in afterwards takes over from the one put in for it.
+  const set = engine(OISIN, [...yesterdayOnly(), mark(at(1, 6, 30)), nap], at(1, 11, 0))
+  assert.equal(todayRows(set).rows.find((r) => r.wake)?.right, '6:30am')
 })
 
 test('the morning answered: the day starts at that wake-up and a nap logged after it counts', () => {
@@ -751,7 +824,7 @@ test('No to a stretch with no nap logged takes the question off the list and the
 // week would have counted thirteen hours of day sleep.
 test('a nap from the evening that ran three hours or more is read as the night', () => {
   const day = shortDay(), stuck = sleep(at(0, 18, 0), null, 'nap')
-  assert.equal(engine(OISIN, [...day, stuck], at(0, 19, 26)).phase(), 'nap')
+  assert.equal(engine(OISIN, [...day, stuck], at(0, 18, 55)).phase(), 'nap')
   const late = engine(OISIN, [...day, stuck], at(0, 21, 5))
   assert.equal(late.phase(), 'night')
   assert.equal(hero(late).sub, 'Down for the night at 6pm.')
@@ -763,4 +836,68 @@ test('a nap from the evening that ran three hours or more is read as the night',
   // A long afternoon nap and a late nap that ended by bedtime stay naps.
   assert.equal(asLogged(OISIN, sleep(at(0, 13, 0), at(0, 16, 10), 'nap')).kind, 'nap')
   assert.equal(asLogged(OISIN, sleep(at(0, 17, 30), at(0, 18, 15), 'nap')).kind, 'nap')
+})
+
+// 28 October 2026: a baby with 3 h 10 min against a 2 h 30 min aim read `has had 2 h 30 min of day
+// sleep today.` From 1.0.42 the line says the sleep the baby had.
+test('day sleep past the aim says the sleep the baby had', () => {
+  const log = [...week(true).filter((x) => x.s < at(0, 7, 30)), sleep(at(0, 9, 0), at(0, 10, 30), 'nap'), sleep(at(0, 12, 30), at(0, 14, 30), 'nap')]
+  const d = daySleep(engine(OISIN, log, at(0, 15, 0)))
+  assert.match(d.say, /has had 3 h 30 min of day sleep today/)
+})
+
+// 28 October 2026: Sunday had one nap of 34 min logged because the day was not tracked, and it
+// counted as a day of 34 min. From 1.0.42 a day marked as not tracked stays in the week as `Not
+// tracked` and out of everything worked out from the past week.
+test('a day marked as not tracked reads Not tracked and leaves the averages, the nap lengths and the one nap fewer count', () => {
+  const now = at(0, 11, 35), sun = at(-3, 0, 0), mon = at(-2, 0, 0)
+  // Sunday kept only its first nap, cut to 34 min.
+  const log = week().flatMap((x) => {
+    if (x.kind !== 'nap' || x.s < sun || x.s >= mon) return [x]
+    return x.s === week().find((y) => y.kind === 'nap' && y.s >= sun)!.s ? [{ ...x, e: x.s + 34 * MIN }] : []
+  })
+  const before = engine(OISIN, log, now)
+  const sunday = before.loggedDays().find((d) => d.wake >= sun && d.wake < mon)!
+  const marked = { ...OISIN, skipDays: withSkipDay(OISIN, sunday.wake, true, now) }
+  const after = engine(marked, log, now)
+
+  // The row stays, reads Not tracked and draws no bar.
+  const w = weekOf(after)
+  assert.ok(!w.empty)
+  const row = w.rows.find((r) => r.wake === sunday.wake)!
+  assert.equal(row.text, 'Not tracked')
+  assert.equal(row.off, true)
+  assert.equal(row.value, 0)
+
+  // The average day sleep is the mean of the other six days.
+  const others = after.pastDays()
+  assert.equal(others.length, 6)
+  assert.ok(!others.some((d) => d.wake === sunday.wake))
+  const avg = (ds: { day: number }[]) => Math.round(ds.reduce((a, d) => a + d.day, 0) / ds.length / MIN)
+  const wb = weekOf(before)
+  assert.ok(!wb.empty && wb.avg && w.avg)
+  assert.notDeepEqual(w.avg!.day, wb.avg!.day)
+  assert.equal(avg(others), avg(before.pastDays().filter((d) => d.wake !== sunday.wake)))
+
+  // The first nap's usual length is the median of the other days' first naps, without the 34 min.
+  const firsts = others.map((d) => d.win[0].nap).sort((a, b) => a - b)
+  assert.equal(after.napLen(0), (firsts[2] + firsts[3]) / 2)
+  assert.ok(before.pastDays().some((d) => d.win[0]?.nap === 34))
+
+  // Counted again, the day is back in.
+  const back = { ...marked, skipDays: withSkipDay(marked, sunday.wake, false, now) }
+  assert.deepEqual(back.skipDays, [])
+  assert.equal(engine(back, log, now).pastDays().length, 7)
+})
+
+test('a day not tracked with a nap fewer does not count towards the one nap fewer card', () => {
+  const now = at(0, 11, 35)
+  // The last three days each dropped their third nap.
+  const log = week().filter((x) => !(x.kind === 'nap' && x.s >= at(-3, 0, 0) && x.s < at(0, 0, 0) && x.s > at(Math.floor((x.s - at(0, 0, 0)) / 86400000), 14, 30)))
+  const E = engine(OISIN, log, now)
+  assert.equal(E.band().naps, 3)
+  assert.equal(E.fewer()?.days, 3)
+  const tue = E.loggedDays().find((d) => d.wake >= at(-2, 0, 0) && d.wake < at(-1, 0, 0))!
+  const marked = { ...OISIN, skipDays: withSkipDay(OISIN, tue.wake, true, now) }
+  assert.equal(engine(marked, log, now).fewer(), null)
 })

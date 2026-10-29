@@ -3,8 +3,9 @@
 // functions are in supabase/sharing.sql. The address and key here are the public ones.
 import type { Baby, Sleep } from './engine.ts'
 
-const URL = 'https://eynuujdjarqnwkjofrpw.supabase.co/rest/v1/rpc/'
-const KEY = 'sb_publishable_u1X1QV-qny9l9YvnVvGvog_xQ8dw1Tm'
+export const PROJECT = 'eynuujdjarqnwkjofrpw'
+export const KEY = 'sb_publishable_u1X1QV-qny9l9YvnVvGvog_xQ8dw1Tm'
+const URL = `https://${PROJECT}.supabase.co/rest/v1/rpc/`
 
 export const JOIN_PAGE = 'https://babynaptrack.com/join/'
 
@@ -36,9 +37,9 @@ export const pushLog = (key: string, baby: Baby | null, babyAt: number, rows: Sl
   call<{ now: string }>('sleep_push', { p_key: key, p_baby: baby, p_baby_at: babyAt, p_rows: rows.map(toWire) })
 
 // `paid` is true once any phone in the log has paid for the nap times, so a log shared by two
-// parents is paid for once.
+// parents is paid for once. `topic` names the channel the log's pings go out on, read by live.ts.
 export const pullLog = (key: string, since: string | null) =>
-  call<{ now: string; baby: Baby; baby_at: number; rows: Wire[]; paid?: boolean }>('sleep_pull', { p_key: key, p_since: since })
+  call<{ now: string; baby: Baby; baby_at: number; rows: Wire[]; paid?: boolean; topic?: string }>('sleep_pull', { p_key: key, p_since: since })
 
 export const markPaid = (key: string) => call<{ ok: boolean }>('sleep_paid', { p_key: key })
 

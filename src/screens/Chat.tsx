@@ -2,6 +2,7 @@
 // same box. While the chat is open it looks for an answer every few seconds, and otherwise once a
 // minute while the app is open, with a dot on the icon when one has come in. A note from us sits
 // above the icon once, and a tap on it opens the chat with the note as its first line.
+import { TAB_H } from './Tabs.tsx'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AppState, Pressable, TextInput, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -57,7 +58,7 @@ export function useChat (ready: boolean, hasBaby: boolean) {
 export function ChatNote ({ onPress, onClose }: { onPress: () => void; onClose: () => void }) {
   const t = useTheme(), insets = useSafeAreaInsets()
   return (
-    <View style={{ position: 'absolute', right: 18, bottom: 82 + insets.bottom, maxWidth: 306, flexDirection: 'row', backgroundColor: t.btn, borderRadius: 18, borderBottomRightRadius: 5, shadowColor: '#0E1222', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 6 }}>
+    <View style={{ position: 'absolute', right: 18, bottom: 82 + TAB_H + insets.bottom, maxWidth: 306, flexDirection: 'row', backgroundColor: t.btn, borderRadius: 18, borderBottomRightRadius: 5, shadowColor: '#0E1222', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 6 }}>
       <Pressable testID="chat-note" accessibilityRole="button" onPress={onPress} style={({ pressed }) => ({ flex: 1, paddingVertical: 15, paddingLeft: 18, paddingRight: 6, opacity: pressed ? 0.8 : 1 })}>
         <T size={15.5} color={t.btnInk} style={{ lineHeight: 22 }}>{NOTE}</T>
       </Pressable>
@@ -74,7 +75,7 @@ export function ChatButton ({ unread, onPress }: { unread: boolean; onPress: () 
   const t = useTheme(), insets = useSafeAreaInsets()
   return (
     <Pressable testID="help" accessibilityRole="button" accessibilityLabel="Help" onPress={onPress}
-      style={({ pressed }) => ({ position: 'absolute', right: 18, bottom: 18 + insets.bottom, width: 52, height: 52, borderRadius: 26, backgroundColor: t.btn, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1, shadowColor: '#0E1222', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 6 })}>
+      style={({ pressed }) => ({ position: 'absolute', right: 18, bottom: 18 + TAB_H + insets.bottom, width: 52, height: 52, borderRadius: 26, backgroundColor: t.btn, alignItems: 'center', justifyContent: 'center', opacity: pressed ? 0.8 : 1, shadowColor: '#0E1222', shadowOpacity: 0.25, shadowRadius: 10, shadowOffset: { width: 0, height: 6 }, elevation: 6 })}>
       <Svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke={t.btnInk} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
         <Path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 8.9 8.9 0 0 1-4-.9L3 21l1.9-4.6A8.4 8.4 0 0 1 12 3a8.4 8.4 0 0 1 9 8.5z" />
       </Svg>

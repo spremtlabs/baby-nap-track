@@ -1,5 +1,6 @@
 -- Sharing one baby's sleep log between carers. Applied by hand with execute_sql to the Supabase
--- project eynuujdjarqnwkjofrpw on 4 October 2026, outside that project's migration history.
+-- project eynuujdjarqnwkjofrpw on 4 October 2026, outside that project's migration history. The
+-- ping on each change went in the same way on 15 October 2026.
 --
 -- No account and no sign-in. A household is found by the hash of a long random key that only
 -- the phones holding the share link know. The tables have RLS on and no policies, and the
@@ -64,6 +65,16 @@ begin
     where excluded.updated_at > public.sleep_entries.updated_at;
 end $$;
 
+-- Tells the phones listening on the log's own Realtime channel that something changed, so an open
+-- app reads it at once. The ping carries no sleep and no name; each phone reads the change through
+-- sleep_pull. A ping that fails never stops the write it follows.
+create or replace function public.sleep_ping(h uuid) returns void
+language plpgsql security definer set search_path = '' as $$
+begin
+  perform realtime.send(jsonb_build_object('at', (extract(epoch from clock_timestamp()) * 1000)::bigint), 'changed', 'sleep-' || h::text, false);
+exception when others then null;
+end $$;
+
 -- The first phone to share makes the household and sends the whole log.
 create or replace function public.sleep_create(p_key text, p_baby jsonb, p_baby_at bigint, p_rows jsonb) returns jsonb
 language plpgsql security definer set search_path = '' as $$
@@ -84,10 +95,12 @@ begin
   select id into h from public.sleep_households where key_hash = public.sleep_hash(p_key);
   if h is null then raise exception 'no such log' using errcode = 'P0002'; end if;
   perform public.sleep_write(h, p_baby, p_baby_at, p_rows);
+  perform public.sleep_ping(h);
   return jsonb_build_object('now', clock_timestamp());
 end $$;
 
--- Everything changed since the phone last asked, and the baby's details.
+-- Everything changed since the phone last asked, the baby's details, and the channel the log's
+-- pings go out on.
 create or replace function public.sleep_pull(p_key text, p_since timestamptz) returns jsonb
 language plpgsql security definer set search_path = '' as $$
 declare h public.sleep_households;
@@ -96,7 +109,7 @@ begin
   if h.id is null then raise exception 'no such log' using errcode = 'P0002'; end if;
   update public.sleep_households set touched_at = now() where id = h.id;
   return jsonb_build_object(
-    'now', clock_timestamp(), 'baby', h.baby, 'baby_at', h.baby_at, 'paid', h.paid,
+    'now', clock_timestamp(), 'baby', h.baby, 'baby_at', h.baby_at, 'paid', h.paid, 'topic', 'sleep-' || h.id::text,
     'rows', coalesce((
       select jsonb_agg(jsonb_build_object('id', id, 's', s, 'e', e, 'kind', kind, 'up', up, 'deleted', deleted, 'updated_at', updated_at))
       from public.sleep_entries where household_id = h.id and (p_since is null or server_at > p_since)
@@ -106,9 +119,12 @@ end $$;
 -- Marks the log as paid for, once a phone in it has paid for the nap times.
 create or replace function public.sleep_paid(p_key text) returns jsonb
 language plpgsql security definer set search_path = '' as $$
+declare h uuid;
 begin
-  update public.sleep_households set paid = true, touched_at = now() where key_hash = public.sleep_hash(p_key);
-  if not found then raise exception 'no such log' using errcode = 'P0002'; end if;
+  update public.sleep_households set paid = true, touched_at = now() where key_hash = public.sleep_hash(p_key)
+  returning id into h;
+  if h is null then raise exception 'no such log' using errcode = 'P0002'; end if;
+  perform public.sleep_ping(h);
   return jsonb_build_object('ok', true);
 end $$;
 
@@ -120,7 +136,7 @@ begin
   return jsonb_build_object('ok', true);
 end $$;
 
-revoke all on function public.sleep_hash(text), public.sleep_write(uuid, jsonb, bigint, jsonb),
+revoke all on function public.sleep_hash(text), public.sleep_write(uuid, jsonb, bigint, jsonb), public.sleep_ping(uuid),
   public.sleep_create(text, jsonb, bigint, jsonb), public.sleep_push(text, jsonb, bigint, jsonb),
   public.sleep_pull(text, timestamptz), public.sleep_paid(text), public.sleep_forget(text) from public, anon, authenticated;
 grant execute on function public.sleep_create(text, jsonb, bigint, jsonb), public.sleep_push(text, jsonb, bigint, jsonb),

@@ -4,15 +4,17 @@ import { useEffect, useRef, useState } from 'react'
 import { Animated, Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg'
-import { askAbout, chairCard, chairChart, chairDay, chairHero, tonight, type Chair, type ChairHero, type Cry, type Why } from '../lib/chair.ts'
-import { ageLine, daySleep, hero, todayRows, week, type Fewer, type Ribbon as RibbonData, type Ways } from '../lib/model.ts'
+import { askAbout, bedtimeRow, chairCard, chairDay, chairHero, tonight, type Chair, type ChairHero, type Cry, type Why } from '../lib/chair.ts'
+import { ageLine, daySleep, hero, todayRows, week, type Fewer, type Ribbon as RibbonData, type Ways, type WeekRow } from '../lib/model.ts'
 import { MIN, atMins, morningAt, type Engine, type Route } from '../lib/engine.ts'
-import { isLocked, type Gate } from '../lib/shop.ts'
+import type { Gate } from '../lib/shop.ts'
 import { bigTime, plain, runParts } from '../lib/words.ts'
 import { F } from '../theme.ts'
 import { TimeField } from '../ui/TimeField.tsx'
 import { Big, Button, Eyebrow, Link, T, useTheme } from '../ui/kit.tsx'
-import { AskCard, ChairCard, ChairChart, ChairNote, TripsRow } from './Chair.tsx'
+import type { AgeChange } from '../lib/guide.ts'
+import { TAB_H } from './Tabs.tsx'
+import { AskCard, ChairCard, ChairNote, TripsRow } from './Chair.tsx'
 
 type Props = {
   E: Engine
@@ -22,9 +24,10 @@ type Props = {
   onWeek: () => void
   onMain: () => void
   onUpForDay: () => void
-  onSettings: () => void
   onEdit: (id: string) => void
   onNight: () => void
+  // Last night's bedtime while the chair method runs: the cot time, asleep, the trips, the pick-ups and a note.
+  onBedtime: () => void
   onAdd: () => void
   onMorning: (t: number) => void
   onWake: () => void
@@ -36,21 +39,38 @@ type Props = {
   // The chair method, while it runs, and the link that keeps the parent where they sat one more night.
   chair: Chair | null | undefined
   onHold: () => void
+  // The button on the note once the day's naps are done: the baby is in the cot for the night.
+  onCot: () => void
   // While settling, each time the parent goes over; after it, the crying and anything that made it harder.
   onTrip: () => void
+  // While settling, each time the parent picks the baby up, from 14 October 2026.
+  onPick: () => void
+  // A nap in the cot while the plan runs, and the link that ends its count with no nap, from 1.0.35.
+  onNapCot: () => void
+  onNapStop: () => void
+  // Tonight's plan, from the note through the day and the card at bedtime.
+  onPlan: () => void
   onCry: (night: string, c: Cry) => void
   onWhy: (night: string, w: Why) => void
   // After a short nap, the way the parent picks to make it up.
   onWay: (day: number, pick: Route, by: number, first: Route) => void
   // One nap fewer a day, or keep the age's naps, from the card the log brings up.
   onFewer: (n: number | null) => void
+  // From 1.0.41: the chair line closed until bedtime, the line while the times still come from the
+  // age, and the card when the age moves on to the next wake windows.
+  hideChair: boolean
+  onHideChair: () => void
+  learn: string | null
+  age: AgeChange | null
+  onAgeOk: () => void
+  onAgeKeep: () => void
 }
 
-export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, onEdit, onNight, onAdd, onMorning, onWake, onGap, onNoNap, onOut, onType, chair, onHold, onTrip, onCry, onWhy, onWay, onFewer }: Props) {
+export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onEdit, onNight, onBedtime, onAdd, onMorning, onWake, onGap, onNoNap, onOut, onType, chair, onHold, onCot, onTrip, onPick, onNapCot, onNapStop, onPlan, onCry, onWhy, onWay, onFewer, hideChair, onHideChair, learn, age, onAgeOk, onAgeKeep }: Props) {
   const t = useTheme(), insets = useSafeAreaInsets()
   const scroll = useRef(new Animated.Value(0)).current
   const h = chairHero(E, chair, hero(E, g), E.now), unknown = E.unknownMorning()
-  const card = chairCard(E, chair, E.now), chart = unknown ? null : chairChart(E, chair, E.now), chairNote = chairDay(E, chair, E.now, isLocked(g))
+  const card = chairCard(E, chair, E.now), chairNote = chairDay(E, chair, E.now)
   // Tonight's question sits under the timer; last night's waits in the chart in the morning.
   const ask = askAbout(E, chair, E.now), askTonight = !!ask && !!chair && ask.night === tonight(chair, E.now).key
   const askCard = ask ? <AskCard ask={ask} onCry={(c) => onCry(ask.night, c)} onWhy={(w) => onWhy(ask.night, w)} /> : null
@@ -75,7 +95,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
       </Animated.View>
       <Animated.ScrollView
         testID="today"
-        contentContainerStyle={{ paddingTop: insets.top + 10, paddingBottom: insets.bottom + 96, paddingHorizontal: 24 }}
+        contentContainerStyle={{ paddingTop: insets.top + 10, paddingBottom: insets.bottom + TAB_H + 96, paddingHorizontal: 24 }}
         onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scroll } } }], { useNativeDriver: true })}
         scrollEventThrottle={16}
       >
@@ -84,10 +104,9 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
             <T w="bold" size={19}>{E.baby.name}</T>
             <T size={14} color={t.muted} style={{ marginTop: 2 }}>{ageLine(E)}</T>
           </View>
-          <Pressable accessibilityRole="button" onPress={onSettings} hitSlop={12}><T size={15} color={t.muted}>Settings</T></Pressable>
         </View>
 
-        {chairNote ? <ChairNote note={chairNote} /> : null}
+        {age ? <AgeCard age={age} onOk={onAgeOk} onKeep={onAgeKeep} /> : null}
         <Eyebrow hot={h.hot}>{h.eyebrow}</Eyebrow>
         {h.ask ? (
           <>
@@ -95,8 +114,8 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
             {h.sub ? <T size={17} style={{ lineHeight: 25, maxWidth: 340, marginBottom: 16 }}>{h.sub}</T> : null}
             <TimeField value={wakeAt} onPick={(hh, mm) => setWake(morningAt(E.baby, E.now, hh, mm))} label="Woke up" testID="wake-time" />
             <Button label={h.cta} disabled={wakeAt > E.now} onPress={() => { onMorning(wakeAt); setWake(null) }} style={{ marginTop: 30 }} />
-            <Link center ink label="Type what happened" onPress={onType} />
-            <Link center label={`${E.baby.name} is asleep now`} onPress={onMain} style={{ paddingTop: 0 }} />
+            <Chips onType={onType} />
+            <Link center label={`${E.baby.name} is asleep now`} onPress={onMain} />
           </>
         ) : h.heading ? (
           <>
@@ -105,7 +124,8 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
             <Button label={h.buy} alt onPress={g.kind === 'offer' ? onWeek : onBuy} style={{ marginTop: 26 }} />
             <TimerBlock h={h} onMain={onMain} />
             {card ? <ChairCard card={card} onHold={onHold} /> : null}
-            <Link center ink label="Type what happened" onPress={onType} />
+            <Chips onType={onType} />
+            {chairNote && !hideChair ? <ChairNote note={chairNote} onCot={onCot} onPlan={onPlan} onClose={onHideChair} /> : null}
           </>
         ) : (
           <>
@@ -114,27 +134,29 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onSettings, on
                 <View style={{ marginTop: 8, marginBottom: 14 }}><Big parts={h.big} size={86} /></View>
                 <T size={17} style={{ lineHeight: 25, maxWidth: 340 }}>{h.sub}</T>
                 {h.note ? <T size={14} color={t.muted} style={{ marginTop: 14 }}>{h.note}</T> : null}
+                {learn ? <Learning text={learn} /> : null}
                 {h.ways ? <WaysCard ways={h.ways} onPick={(id) => onWay(h.ways!.day, id, h.ways!.by, h.ways!.opts[0].id)} /> : null}
                 {h.fewer ? <FewerCard fewer={h.fewer} onPick={(id) => onFewer(id === 'fewer' ? h.fewer!.n : null)} /> : null}
               </>
             ) : null}
             <TimerBlock h={h} onMain={onMain} />
             {h.wake ? <WakeCard w={h.wake} name={E.baby.name} /> : null}
-            {h.settling ? <TripsRow n={h.trips ?? 0} onPress={onTrip} /> : null}
+            {h.settling && !h.nap ? <TripsRow n={h.trips ?? 0} picks={h.picks ?? 0} name={E.baby.name} onPress={onTrip} onPick={onPick} /> : null}
+            {h.napLink ? <Link center label={h.napLink} onPress={onNapCot} /> : null}
+            {h.stop ? <Link center label={h.stop} onPress={onNapStop} /> : null}
             {askTonight ? askCard : null}
             {card ? <ChairCard card={card} onHold={onHold} /> : null}
             {h.upForDay ? <Link center label={`${E.baby.name} is up for the day`} onPress={onUpForDay} /> : null}
-            {h.outLink ? <Link center label={h.outLink} onPress={onOut} /> : null}
-            {/* Under the timer from 1.0.28, where the line about the free week sat. That line follows it. */}
-            <Link center ink label="Type what happened" onPress={onType} style={h.upForDay || h.outLink ? { paddingTop: 0 } : undefined} />
+            {/* Under the timer from 1.0.28, where the line about the free week sat. That line follows it.
+                From 1.0.41 it is a button beside going out. From 1.0.44 the chair method's day card
+                sits under the two buttons, so it never pushes them down the screen. */}
+            <Chips onType={onType} out={h.outLink} onOut={onOut} />
             {h.shop ? <T size={14} color={t.muted} style={{ marginTop: 4, lineHeight: 20 }}>{h.shop}</T> : null}
+            {chairNote && !hideChair ? <ChairNote note={chairNote} onCot={onCot} onPlan={onPlan} onClose={onHideChair} /> : null}
           </>
         )}
 
-        {unknown ? null : <DaySleepSection E={E} g={g} />}
-        {unknown ? null : <TodaySection E={E} g={g} onEdit={onEdit} onNight={onNight} onAdd={onAdd} onWake={onWake} onGap={onGap} onNoNap={onNoNap} onOut={onOut} />}
-        {chart ? <ChairChart chart={chart} ask={ask && !askTonight ? askCard : null} onHold={onHold} /> : null}
-        <WeekSection E={E} />
+        {unknown ? null : <TodaySection E={E} g={g} chair={chair} onEdit={onEdit} onNight={onNight} onBedtime={onBedtime} onAdd={onAdd} onWake={onWake} onGap={onGap} onNoNap={onNoNap} onOut={onOut} />}
       </Animated.ScrollView>
     </View>
   )
@@ -244,23 +266,8 @@ function Heading ({ children }: { children: string }) {
   return <View style={{ marginTop: 44, marginBottom: 10 }}><Eyebrow>{children}</Eyebrow></View>
 }
 
-function DaySleepSection ({ E, g }: { E: Engine; g: Gate }) {
-  const t = useTheme(), d = daySleep(E, g)
-  return (
-    <View>
-      <Heading>Day sleep</Heading>
-      <View style={{ flexDirection: 'row', alignItems: 'baseline', flexWrap: 'wrap', gap: 8 }}>
-        <Big parts={d.so} size={44} unit={16} />
-        <T size={16} color={t.muted}>{d.of}</T>
-      </View>
-      <Ribbon r={d} />
-      <T size={16} style={{ marginTop: 14, lineHeight: 23 }}>{d.say}</T>
-    </View>
-  )
-}
-
 // The day's graph: the sleeps, the naps planned, the time out and any stretch with no nap logged.
-export function Ribbon ({ r }: { r: RibbonData }) {
+export function Ribbon ({ r, keys = true }: { r: RibbonData; keys?: boolean }) {
   const t = useTheme()
   return (
     <View>
@@ -281,12 +288,12 @@ export function Ribbon ({ r }: { r: RibbonData }) {
             style={l.edge === 'r' ? { position: 'absolute', right: 0, top: 0 } : { position: 'absolute', left: `${l.at}%`, top: 0 }}>{l.text}</T>
         ))}
       </View>
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 18, rowGap: 8 }}>
+      {keys || r.gaps || r.outs ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', columnGap: 18, rowGap: 8, marginBottom: keys ? 0 : 10 }}>
         <Key label="Slept" />
         {r.planned ? <Key label="Planned naps" kind="plan" /> : null}
         {r.outs ? <Key label="Out" kind="out" /> : null}
         {r.gaps ? <Key label="No nap logged" kind="gap" /> : null}
-      </View>
+      </View> : null}
     </View>
   )
 }
@@ -305,13 +312,66 @@ function Key ({ label, kind }: { label: string; kind?: 'plan' | 'out' | 'gap' })
   )
 }
 
-function TodaySection ({ E, g, onEdit, onNight, onAdd, onWake, onGap, onNoNap, onOut }: { E: Engine; g: Gate; onEdit: (id: string) => void; onNight: () => void; onAdd: () => void; onWake: () => void; onGap: (a: number, z: number) => void; onNoNap: (a: number, z: number) => void; onOut: () => void }) {
-  const { heading, rows } = todayRows(E, g)
+// From 1.0.41 the day's sleep and today's list are one card: the total against the aim, the graph,
+// the line about what is left, then the list.
+function TodaySection ({ E, g, chair, onEdit, onNight, onBedtime, onAdd, onWake, onGap, onNoNap, onOut }: { E: Engine; g: Gate; chair: Chair | null | undefined; onEdit: (id: string) => void; onNight: () => void; onBedtime: () => void; onAdd: () => void; onWake: () => void; onGap: (a: number, z: number) => void; onNoNap: (a: number, z: number) => void; onOut: () => void }) {
+  const t = useTheme(), d = daySleep(E, g)
+  const { heading, rows: list } = todayRows(E, g), bed = bedtimeRow(E, chair)
+  // Bedtime goes just above Last night, while the chair method covers last night.
+  const rows = bed ? list.flatMap((r) => (r.night ? [bed, r] : [r])) : list
   return (
-    <View>
-      <Heading>{heading}</Heading>
-      <Rows rows={rows} onNo={(r) => onNoNap(r.gap![0], r.gap![1])} onPress={(r) => (r.night ? onNight : r.wake ? onWake : r.gap ? () => onGap(r.gap![0], r.gap![1]) : r.out ? onOut : r.edit ? () => onEdit(r.edit!) : null)} />
+    <View testID="today-card" style={{ marginTop: 30, backgroundColor: t.name === 'day' ? '#FFFFFF' : t.soft, borderRadius: 22, paddingHorizontal: 18, paddingTop: 16, paddingBottom: 6 }}>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 10 }}>
+        <T w="bold" size={18}>{heading}</T>
+        <T size={14} color={t.muted} style={{ flexShrink: 1, textAlign: 'right' }}>{`${plain(d.so)} ${d.of} day sleep`}</T>
+      </View>
+      <Ribbon r={d} keys={false} />
+      <T size={15} style={{ lineHeight: 21, marginBottom: 12 }}>{d.say}</T>
+      <Rows rows={rows} onNo={(r) => onNoNap(r.gap![0], r.gap![1])} onPress={(r) => (r.bed ? onBedtime : r.night ? onNight : r.wake ? onWake : r.gap ? () => onGap(r.gap![0], r.gap![1]) : r.out ? onOut : r.edit ? () => onEdit(r.edit!) : null)} />
       <Link center label="Add a sleep you missed" onPress={onAdd} />
+    </View>
+  )
+}
+
+// Under the timer from 1.0.41: typing the day in, and planning the naps around going out, side by
+// side. The second carries the whole question for a screen reader.
+function Chips ({ onType, out, onOut }: { onType: () => void; out?: string | null; onOut?: () => void }) {
+  const t = useTheme()
+  const chip = (label: string, a11y: string, onPress: () => void) => (
+    <Pressable accessibilityRole="button" accessibilityLabel={a11y} onPress={onPress}
+      style={({ pressed }) => ({ backgroundColor: t.soft, borderRadius: 18, paddingVertical: 9, paddingHorizontal: 14, opacity: pressed ? 0.7 : 1 })}>
+      <T w="semibold" size={14.5}>{label}</T>
+    </Pressable>
+  )
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 22 }}>
+      {chip('Type what happened', 'Type what happened', onType)}
+      {out && onOut ? chip(out.split('?')[0] + '?', out, onOut) : null}
+    </View>
+  )
+}
+
+// While the nap times still come from the age: which of the first 3 days of naps this is.
+function Learning ({ text }: { text: string }) {
+  const t = useTheme(), n = Number(/day (\d)/.exec(text)?.[1] ?? 1)
+  return (
+    <View testID="learning" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start', backgroundColor: t.soft, borderRadius: 14, paddingVertical: 6, paddingHorizontal: 11, marginTop: 14 }}>
+      <View style={{ flexDirection: 'row', gap: 3 }}>{[1, 2, 3].map((k) => <View key={k} style={{ width: 14, height: 5, borderRadius: 3, backgroundColor: k <= n ? t.sleep : t.line }} />)}</View>
+      <T w="semibold" size={13}>{text}</T>
+    </View>
+  )
+}
+
+// The card when the age moves on to the next wake windows. Sounds good keeps the new times, and the
+// link keeps the old ones for a week, after which the card asks again.
+function AgeCard ({ age, onOk, onKeep }: { age: AgeChange; onOk: () => void; onKeep: () => void }) {
+  const t = useTheme()
+  return (
+    <View testID="age-card" style={{ backgroundColor: t.name === 'day' ? '#FFFFFF' : t.soft, borderRadius: 22, padding: 18, gap: 10, marginBottom: 28 }}>
+      <T w="bold" size={20}>{age.title}</T>
+      {age.lines.map((x, i) => <T key={i} size={16} style={{ lineHeight: 23 }}>{x}</T>)}
+      <Button label="Sounds good" onPress={onOk} style={{ marginTop: 6 }} />
+      <Link center label="Not ready yet? Keep the old times for a week" onPress={onKeep} />
     </View>
   )
 }
@@ -370,7 +430,8 @@ export function Rows ({ rows, onPress, onNo }: { rows: ReturnType<typeof todayRo
   )
 }
 
-function WeekSection ({ E }: { E: Engine }) {
+// A tap on a past day opens the sheet that marks it as not tracked, on the Menu from 1.0.42.
+export function WeekSection ({ E, first, onDay }: { E: Engine; first?: boolean; onDay?: (r: WeekRow) => void }) {
   const t = useTheme(), w = week(E)
   if (w.empty) return (
     <View>
@@ -386,16 +447,21 @@ function WeekSection ({ E }: { E: Engine }) {
         <View style={{ width: 2, height: 14, backgroundColor: t.ink, opacity: 0.6, borderRadius: 1 }} />
         <T size={13} color={t.muted}>{w.key}</T>
       </View>
-      {w.rows.map((r, i) => (
-        <View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, height: 32 }}>
-          <T size={13.5} w={r.today ? 'bold' : 'regular'} style={{ width: 52 }}>{r.label}</T>
-          <View style={{ flex: 1, height: 12, borderRadius: 6, backgroundColor: t.soft }}>
-            <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: pc(r.value), borderRadius: 6, backgroundColor: t.sleep }} />
-            <View style={{ position: 'absolute', top: -5, bottom: -5, width: 2, marginLeft: -1, left: pc(w.target), backgroundColor: t.ink, opacity: 0.6, borderRadius: 1 }} />
+      {w.rows.map((r, i) => {
+        const body = (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, height: 34 }}>
+            <T size={13.5} w={r.today ? 'bold' : 'regular'} color={r.off ? t.muted : undefined} style={{ width: 52, opacity: r.off ? 0.7 : 1 }}>{r.label}</T>
+            <View style={{ flex: 1, height: 12, borderRadius: 6, backgroundColor: t.soft, opacity: r.off ? 0.5 : 1 }}>
+              {r.off ? null : <View style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: pc(r.value), borderRadius: 6, backgroundColor: t.sleep }} />}
+              <View style={{ position: 'absolute', top: -5, bottom: -5, width: 2, marginLeft: -1, left: pc(w.target), backgroundColor: t.ink, opacity: 0.6, borderRadius: 1 }} />
+            </View>
+            <T size={13.5} color={t.muted} style={{ width: 84, textAlign: 'right', fontVariant: ['tabular-nums'], opacity: r.off ? 0.7 : 1 }}>{r.text}</T>
           </View>
-          <T size={13.5} color={t.muted} style={{ width: 76, textAlign: 'right', fontVariant: ['tabular-nums'] }}>{r.text}</T>
-        </View>
-      ))}
+        )
+        return onDay && r.wake != null
+          ? <Pressable key={i} testID={`week-day-${i}`} accessibilityRole="button" accessibilityLabel={`${r.label}, ${r.text}`} onPress={() => onDay(r)} style={({ pressed }) => ({ opacity: pressed ? 0.6 : 1 })}>{body}</Pressable>
+          : <View key={i}>{body}</View>
+      })}
       {w.avg ? (
         <View style={{ flexDirection: 'row', gap: 18, marginTop: 22 }}>
           <View style={{ flex: 1 }}><Big parts={w.avg.day} size={34} unit={14} /><T size={13.5} color={t.muted} style={{ marginTop: 6 }}>Average day sleep</T></View>

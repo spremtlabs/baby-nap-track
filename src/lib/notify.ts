@@ -43,17 +43,23 @@ export async function askToRemind () {
   return asked.granted
 }
 
-export async function book (next: { at: number; title: string; body: string } | null) {
+// `age` is the notice on the morning the wake windows move on to the next age, from 1.0.41. It is
+// booked beside the reminder, because booking cancels everything booked before.
+type Note = { at: number; title: string; body: string }
+export async function book (next: Note | null, age: Note | null = null) {
   if (Platform.OS === 'web') return
   await setup()
   await Notifications.cancelAllScheduledNotificationsAsync()
-  if (!next || next.at < Date.now() + 60 * 1000) return
+  const due = [next, age].filter((x): x is Note => !!x && x.at >= Date.now() + 60 * 1000)
+  if (!due.length) return
   const perm = await Notifications.getPermissionsAsync()
   if (!perm.granted) return
-  await Notifications.scheduleNotificationAsync({
-    content: { title: next.title, body: next.body },
-    trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(next.at), channelId: 'naps' },
-  })
+  for (const x of due) {
+    await Notifications.scheduleNotificationAsync({
+      content: { title: x.title, body: x.body },
+      trigger: { type: Notifications.SchedulableTriggerInputTypes.DATE, date: new Date(x.at), channelId: 'naps' },
+    })
+  }
 }
 
 // The notice for the sleep that is running, or none. It stays until the sleep ends, here or on a

@@ -1,10 +1,11 @@
 // The log on this phone, saved on every change, the sharing that keeps it in step with the other
 // carers' phones, and what Google Play says about paying for the nap times.
+import { nextBandAt } from './guide.ts'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Crypto from 'expo-crypto'
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { AppState } from 'react-native'
-import { engine, withMorning, type Baby, type Out, type Sleep } from './engine.ts'
+import { ended, engine, withMorning, type Baby, type Out, type Sleep } from './engine.ts'
 import { applyTyped, type Typed } from './typed.ts'
 import type { Chair } from './chair.ts'
 import { play, type Item, type Outcome } from './billing.ts'
@@ -17,12 +18,14 @@ import { askForRating } from './review.ts'
 import { NO_SHOP, gate, isLocked, type Paid } from './shop.ts'
 import { NOT_TOLD, dayKey, due, toldOnLoad, type Source, type Told } from './track.ts'
 import { NoSuchLog, createLog, forgetLog, fromWire, markPaid, merge, pullLog, pushLog } from './sync.ts'
+import { listen } from './live.ts'
 import { signUp as sendSignUp } from './signup.ts'
 import Constants from 'expo-constants'
 
 const STORE_KEY = 'snug.state.v1'
 
-export type Share = { key: string; since: string | null; lastOk: number | null; failing: boolean }
+// `topic` is the channel the log's pings go out on, learnt from the first read after joining.
+export type Share = { key: string; since: string | null; lastOk: number | null; failing: boolean; topic?: string }
 
 // Version 1.0.0 also kept an `anchor`, the time setup was told the baby last woke. It never knew
 // the morning's naps, so it is left unread and the screen asks about the morning again.
@@ -52,6 +55,12 @@ type Saved = {
   // The days this phone started a nap from the timer, and whether the store's rating card has been
   // asked for. Like `paid`, it outlives a deleted log, so the card is asked for once.
   rate: Rate
+  // From 1.0.41, on this phone only: the day the chair method line was closed on Today, which keeps
+  // it off until the bedtime window; the wake windows band last shown, so a move to the next one
+  // shows its card once; and whether the day 3 line has been shown.
+  hideChair?: string | null
+  bandSeen?: number | null
+  learnt?: boolean
 }
 
 const EMPTY: Saved = { baby: null, sleeps: [], alerts: true, lead: 15, share: null, babyAt: 0, unsent: [], babyUnsent: false, paid: NO_SHOP, paidMarked: null, told: NOT_TOLD, out: null, counts: null, signedUp: false, rate: NO_RATE }
@@ -96,10 +105,14 @@ function useStoreValue () {
   }, [])
 
   /* Sharing */
+  // A ping that arrives while a read is under way asks for one more read straight after it, since
+  // the read in flight may have left before the other phone's change was saved.
   const syncing = useRef(false)
+  const again = useRef(false)
   const sync = useCallback(async () => {
     const s = ref.current
-    if (!s || !s.share || syncing.current) return
+    if (!s || !s.share) return
+    if (syncing.current) { again.current = true; return }
     syncing.current = true
     const sent = new Set(s.unsent)
     try {
@@ -122,7 +135,7 @@ function useStoreValue () {
           baby: takeBaby ? { ...cur.baby!, ...(res.baby as Baby) } : cur.baby,
           babyAt: takeBaby ? Number(res.baby_at) : cur.babyAt,
           paid: { ...cur.paid, sharedPaid: !!res.paid },
-          share: { ...cur.share, since: res.now, lastOk: Date.now(), failing: false },
+          share: { ...cur.share, since: res.now, lastOk: Date.now(), failing: false, topic: res.topic ?? cur.share.topic },
         }
       })
     } catch (e) {
@@ -130,6 +143,7 @@ function useStoreValue () {
       if (e instanceof NoSuchLog) update((cur) => ({ ...cur, share: null }))
     } finally {
       syncing.current = false
+      if (again.current) { again.current = false; sync() }
     }
   }, [update])
 
@@ -150,6 +164,21 @@ function useStoreValue () {
     return () => { clearInterval(t); sub.remove() }
   }, [state?.share?.key, sync])
 
+  // While the app is on screen, another phone's change arrives within a second or two: the log's
+  // channel pings and this phone reads it at once. The channel closes when the app goes to the
+  // background, and the read on every return covers the time away. The minute's read stays as the
+  // backstop.
+  const topic = state?.share?.topic
+  useEffect(() => {
+    if (!topic) return
+    let stop: (() => void) | null = AppState.currentState === 'background' ? null : listen(topic, sync)
+    const sub = AppState.addEventListener('change', (st) => {
+      if (st === 'active' && !stop) stop = listen(topic, sync)
+      else if (st === 'background' && stop) { stop(); stop = null }
+    })
+    return () => { sub.remove(); stop?.() }
+  }, [topic, sync])
+
   // The reminder follows the screen. Once the free week is up, the nap times and their reminders
   // wait for the payment.
   const locked = state ? isLocked(gate(state.paid, now)) : false
@@ -157,8 +186,9 @@ function useStoreValue () {
     if (!state?.baby) return
     if (!state.alerts) { clearAll(); return }
     if (locked) { book(null).catch(() => {}); return }
-    const E = engine(state.baby, state.sleeps, Date.now(), state.out)
-    book(reminder(E, state.lead)).catch(() => {})
+    const E = engine(state.baby, state.sleeps, Date.now(), state.out), nb = nextBandAt(state.baby, E.age(), Date.now())
+    const age = nb ? { at: nb.at, title: `Happy ${nb.months} months, ${state.baby.name}!`, body: `Most babies stay awake a bit longer between naps from now. Tap to see ${state.baby.name}'s new nap times.` } : null
+    book(reminder(E, state.lead), age).catch(() => {})
   }, [state?.sleeps, state?.baby, state?.alerts, state?.lead, state?.out, locked])
 
   /* Analytics */
@@ -292,7 +322,7 @@ function useStoreValue () {
   const endSleep = useCallback((id: string, up: boolean, at = Date.now()) => {
     update((s) => ({
       ...s,
-      sleeps: s.sleeps.map((x) => (x.id === id ? { ...x, e: x.e ?? at, up, updatedAt: Date.now() } : x)),
+      sleeps: s.baby ? ended(s.baby, s.sleeps, id, up, at, Date.now()) : s.sleeps,
       unsent: touch(s, [id]),
     }))
   }, [update])
@@ -318,9 +348,15 @@ function useStoreValue () {
     update((s) => (s.baby ? { ...s, baby: { ...s.baby, ...patch }, babyAt: Date.now(), babyUnsent: !!s.share } : s))
   }, [update])
 
-  // The chair method, changed from what it is at the moment of the change.
+  // The chair method, changed from what it is at the moment of the change. From 1.0.43 starting it
+  // clears the way the naps run, so they go by whatever gets the night right while it runs and back
+  // to the last wake-up after. The parent can pick another way in Settings while it runs.
   const setChair = useCallback((fn: (c: Chair | null) => Chair | null) => {
-    update((s) => (s.baby ? { ...s, baby: { ...s.baby, chair: fn(s.baby.chair ?? null) }, babyAt: Date.now(), babyUnsent: !!s.share } : s))
+    update((s) => {
+      if (!s.baby) return s
+      const was = s.baby.chair ?? null, chair = fn(was)
+      return { ...s, baby: { ...s.baby, chair, ...(!was && chair ? { style: null } : {}) }, babyAt: Date.now(), babyUnsent: !!s.share }
+    })
   }, [update])
 
   // Setup keeps this morning's wake-up and any naps since, so the first nap time comes from them.
@@ -380,7 +416,7 @@ function useStoreValue () {
 
   const setOut = useCallback((o: Out | null) => update((s) => ({ ...s, out: o })), [update])
 
-  // The parent's email, for sleep tips. The phone keeps only that it was given, never the address.
+  // The parent's email, for new sleep guides. The phone keeps only that it was given, never the address.
   const signUp = useCallback(async (email: string, source: 'setup' | 'settings') => {
     const r = await sendSignUp(email, source, Constants.expoConfig?.version ?? '')
     if (r === 'ok') update((s) => ({ ...s, signedUp: true }))
@@ -389,6 +425,7 @@ function useStoreValue () {
 
   const setAlerts = useCallback((on: boolean) => update((s) => ({ ...s, alerts: on })), [update])
   const setLead = useCallback((m: number) => update((s) => ({ ...s, lead: m })), [update])
+  const setLocal = useCallback((patch: Partial<Pick<Saved, 'hideChair' | 'bandSeen' | 'learnt'>>) => update((s) => ({ ...s, ...patch })), [update])
 
   // The first phone to share sends the whole log and gets the link.
   const startShare = useCallback(async () => {
@@ -429,7 +466,7 @@ function useStoreValue () {
 
   return {
     loaded: !!state, state: state ?? EMPTY, now, E, gate: g, late, refreshNow: () => setNow(Date.now()),
-    addSleep, napStarted, endSleep, saveSleep, saveNight, saveTyped, deleteSleep, setBaby, setChair, setup, setMorning, setOut, setAlerts, setLead, startShare, joinShare, stopShare, deleteAll, sync,
+    addSleep, napStarted, endSleep, saveSleep, saveNight, saveTyped, deleteSleep, setBaby, setChair, setup, setMorning, setOut, setAlerts, setLead, setLocal, startShare, joinShare, stopShare, deleteAll, sync,
     buy, restore, startWeek, setCounts, signUp,
   }
 }

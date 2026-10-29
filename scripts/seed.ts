@@ -6,7 +6,32 @@ import { AT_FIVE_MONTHS, CIAN, OISIN, at, sleep, week } from '../test/sample.ts'
 
 export const STORE_KEY = 'snug.state.v1'
 
-export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'short-last' | 'young' | 'fewer' | 'typed-evening' | 'early-bed' | 'back-asleep' | 'chair-eve' | 'chair-move'): { state: string; now: number } {
+export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1' | 'evening' | 'gap' | 'chair' | 'chair-morning' | 'short-nap' | 'short-last' | 'young' | 'fewer' | 'typed-evening' | 'early-bed' | 'back-asleep' | 'chair-eve' | 'chair-move' | 'chair-clock' | 'chair-day2' | 'chair-early' | 'chair-nap' | 'chair-nap-hour' | `chair-n${number}`): { state: string; now: number } {
+  // 14 October 2026 at 6:34am, three nights of the chair method done, awake since 6 and not up for
+  // the day. Up to 1.0.32 a tap on the timer then put the baby in the cot for night 4.
+  if (scenario === 'chair-early') {
+    const settles = [-3, -2, -1].map((d) => ({ night: eveningOf(at(d, 19, 0)), inCot: at(d, 19, 0), asleep: at(d, 19, 0) + 30 * MIN, trips: 2 }))
+    const baby = { ...OISIN, chair: { from: eveningOf(at(-3, 19, 0)), held: [], settles, inCot: null } }
+    const sleeps = [...week().filter((x) => x.s < at(-1, 18, 0)), sleep(at(-1, 19, 30), at(0, 6, 0), 'night')]
+    return { state: JSON.stringify({ baby, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 6, 34) }
+  }
+  // 16 October 2026 at 4:02pm, night 6 of the chair method: up at 6:30, two naps of 2 h 27 min, awake
+  // 23 minutes, and 33 min of nap needed by 4:25pm. Up to 1.0.34 the screen then said an overtired
+  // baby could nap in the car. `chair-nap-hour` is 5:03pm, an hour after the nap went into the cot.
+  if (scenario === 'chair-nap' || scenario === 'chair-nap-hour') {
+    const settles = [-5, -4, -3, -2, -1].map((d) => ({ night: eveningOf(at(d, 19, 0)), inCot: at(d, 18, 30), asleep: at(d, 19, 0), trips: 2 }))
+    const hour = scenario === 'chair-nap-hour'
+    const baby = { ...OISIN, chair: { from: eveningOf(at(-5, 19, 0)), held: [], settles, inCot: null, napCot: hour ? at(0, 16, 2) : null } }
+    const sleeps = [...week().filter((x) => x.s < at(-1, 18, 0)), sleep(at(-1, 19, 0), at(0, 6, 30), 'night', true), sleep(at(0, 9, 0), at(0, 10, 30), 'nap'), sleep(at(0, 14, 42), at(0, 15, 39), 'nap')]
+    return { state: JSON.stringify({ baby, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: hour ? at(0, 17, 3) : at(0, 16, 2) }
+  }
+  // The morning of night n of the chair method, at 11:35am, with every night before it settled.
+  if (scenario.startsWith('chair-n')) {
+    const n = Number(scenario.slice(7)), ago = n - 1
+    const settles = Array.from({ length: ago }, (_, i) => ({ night: eveningOf(at(i - ago, 19, 0)), inCot: at(i - ago, 19, 0), asleep: at(i - ago, 19, 0) + Math.max(8, 46 - 3 * i) * MIN, trips: 2, cry: 'some' }))
+    const baby = { ...OISIN, chair: { from: eveningOf(at(-ago, 19, 0)), held: [], settles, inCot: null } }
+    return { state: JSON.stringify({ baby, sleeps: week(), alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 11, 35) }
+  }
   // 11 October 2026 at 6pm, at five months: a night with a waking from 5 to 6am, three short naps,
   // and the screen giving an early bedtime of 6:30pm. From 1.0.28 a tap on the timer then is the
   // night. Up to 1.0.27 it was read against the short nap the plan held for 4:45pm.
@@ -58,6 +83,17 @@ export function seed (scenario: 'morning' | 'short' | 'night' | 'tomorrow' | 'v1
   if (scenario === 'chair-eve') {
     const sleeps = [...week(), sleep(at(0, 12, 20), at(0, 13, 30), 'nap'), sleep(at(0, 15, 50), at(0, 16, 40), 'nap')]
     return { state: JSON.stringify({ baby: OISIN, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: at(0, 18, 50) }
+  }
+  // Night 2 of the chair method, with night 1 settled in 40 minutes: at 9:27am with naps to come, or
+  // at 5:20pm with the day's naps done, when the note has the button that puts the baby in the cot.
+  if (scenario === 'chair-clock' || scenario === 'chair-day2') {
+    const clock = scenario === 'chair-clock', sleeps = week()
+    // Asleep is when last night in the log starts, 40 minutes after the cot.
+    const down = sleeps.find((x) => x.kind === 'night' && x.s > at(-1, 12, 0) && x.s < at(0, 0, 0))!.s
+    const settles = [{ night: eveningOf(down), inCot: down - 40 * MIN, asleep: down, trips: 3, cry: 'some' }]
+    const baby = { ...OISIN, chair: { from: eveningOf(at(-1, 19, 0)), held: [], settles, inCot: null } }
+    if (clock) sleeps.push(sleep(at(0, 12, 20), at(0, 13, 30), 'nap'), sleep(at(0, 15, 50), at(0, 16, 40), 'nap'))
+    return { state: JSON.stringify({ baby, sleeps, alerts: true, lead: 15, share: null, babyAt: 1, unsent: [], babyUnsent: false }), now: clock ? at(0, 17, 20) : at(0, 9, 27) }
   }
   // The chair method. Night 4 at 6:50pm with bedtime at 7, three nights
   // settled beside the cot; or the morning after night 4, with four nights settled.

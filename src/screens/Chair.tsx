@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Pressable, View } from 'react-native'
 import { SvgXml } from 'react-native-svg'
-import { CRY, WHY, tripsSoFar, type Ask, type Card, type Chart, type Cry, type DayNote, type Guide, type Help, type HelpId, type Intro, type NightPlan, type Why } from '../lib/chair.ts'
+import { CRY, WHY, placeNight, tripsSoFar, type Ask, type Card, type Chart, type Cry, type DayNote, type Guide, type Help, type HelpId, type Intro, type NightPlan, type Why } from '../lib/chair.ts'
 import { SCENE_STOPS, chairScene } from '../lib/chairArt.ts'
 import { Button, Eyebrow, Link, Sheet, T, useTheme } from '../ui/kit.tsx'
 
@@ -35,13 +35,17 @@ export function ChairPicture ({ place, done, ranges }: { place: number; done: nu
 // On Today through the day: which night it is, where to sit tonight, one finding, the link to
 // tonight's plan, and once the day's naps are done the button that puts the baby in the cot.
 // From 1.0.41 it sits under the timer, and the X keeps it off Today until the bedtime window.
-export function ChairNote ({ note, onCot, onPlan, onClose }: { note: DayNote; onCot: () => void; onPlan: () => void; onClose?: () => void }) {
+// From 1.0.46 the note can ask first: where the parent is up to, once, on a plan from before 1.0.46,
+// and whether the parent did last night when the log cannot say. Two buttons answer it, and the
+// note then says tonight's place.
+export function ChairNote ({ note, onCot, onPlan, onClose, onAnswer, onPlace }: { note: DayNote; onCot: () => void; onPlan: () => void; onClose?: () => void; onAnswer?: (yes: boolean) => void; onPlace?: () => void }) {
   const t = useTheme()
+  const ask = note.ask && onAnswer
   return (
     <View testID="chair-day" style={{ marginTop: 22, backgroundColor: t.soft, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 16, gap: 3 }}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
         <Eyebrow>{note.head}</Eyebrow>
-        {onClose && !note.cot ? (
+        {onClose && !note.cot && !ask ? (
           <Pressable testID="chair-day-close" accessibilityRole="button" accessibilityLabel="Hide until bedtime" onPress={onClose} hitSlop={12} style={{ marginTop: -4, marginRight: -6, width: 30, height: 30, alignItems: 'center', justifyContent: 'center' }}>
             <T size={20} color={t.muted}>×</T>
           </Pressable>
@@ -49,9 +53,49 @@ export function ChairNote ({ note, onCot, onPlan, onClose }: { note: DayNote; on
       </View>
       <T size={15.5} style={{ lineHeight: 22 }}>{note.line}</T>
       {note.known ? <T size={14} color={t.muted} style={{ lineHeight: 20, marginTop: 4 }}>{note.known}</T> : null}
-      <PlanLink onPress={onPlan} />
+      {ask ? (
+        <View testID="chair-ask" style={{ flexDirection: 'row', gap: 8, marginTop: 10, marginBottom: 4 }}>
+          <Pill label="Yes" onPress={() => onAnswer!(true)} dark />
+          {note.ask === 'where' ? <Pill label="Change where I sit" onPress={() => onPlace?.()} /> : <Pill label="No" onPress={() => onAnswer!(false)} />}
+        </View>
+      ) : <PlanLink onPress={onPlan} />}
       {note.cot ? <Button label={note.cot} onPress={onCot} style={{ height: 52, marginTop: 8, marginBottom: 2 }} /> : null}
     </View>
+  )
+}
+
+const Pill = ({ label, onPress, dark }: { label: string; onPress: () => void; dark?: boolean }) => {
+  const t = useTheme()
+  return (
+    <Pressable accessibilityRole="button" onPress={onPress}
+      style={({ pressed }) => ({ flex: 1, minHeight: 46, borderRadius: 23, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', backgroundColor: dark ? t.btn : t.bg, borderWidth: dark ? 0 : 1.5, borderColor: t.line, opacity: pressed ? 0.8 : 1 })}>
+      <T w="semibold" size={15} color={dark ? t.btnInk : t.ink} style={{ textAlign: 'center' }}>{label}</T>
+    </Pressable>
+  )
+}
+
+// Where the parent sits tonight, from 1.0.46, with the night of the plan each place starts on. A tap
+// makes tonight the first night there.
+const PLACE_NAMES = ['Beside the cot', 'Halfway to the door', 'Inside the door', 'In the hall', 'Out of the room']
+export function PlaceSheet ({ open, place, onPick, onClose }: { open: boolean; place: number; onPick: (p: number) => void; onClose: () => void }) {
+  const t = useTheme()
+  return (
+    <Sheet key="place" open={open} onClose={onClose}>
+      <View testID="chair-place">
+        <T w="bold" size={24} style={{ lineHeight: 30 }}>Where will you sit tonight?</T>
+        <T size={15.5} color={t.muted} style={{ lineHeight: 22, marginTop: 6, marginBottom: 14 }}>{"You'll do 3 nights there, then move closer to the door."}</T>
+        {PLACE_NAMES.map((name, i) => (
+          <Pressable key={i} accessibilityRole="button" accessibilityLabel={name} accessibilityState={{ selected: i === place }} onPress={() => onPick(i)}
+            style={({ pressed }) => ({ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 15, borderTopWidth: i ? 0 : 1, borderBottomWidth: 1, borderColor: t.line, opacity: pressed ? 0.7 : 1 })}>
+            <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+              <T w="semibold" size={16.5}>{name}</T>
+              {i === place ? <T w="bold" size={12.5} color={t.sleep}>Now</T> : null}
+            </View>
+            <T size={14} color={t.muted}>{`Night ${placeNight(i)}`}</T>
+          </Pressable>
+        ))}
+      </View>
+    </Sheet>
   )
 }
 

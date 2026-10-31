@@ -20,7 +20,7 @@ const screen = (baby: Baby, log: Sleep[], now: number) => {
 const shortMorning = () => [...week().filter((x) => !(x.kind === 'nap' && x.s >= at(0, 0, 0))), sleep(at(0, 8, 40), at(0, 9, 10), 'nap')]
 
 test('a chair method in progress runs the naps the night way, until the parent picks another', () => {
-  const chair = { from: '2026-10-01', held: [], settles: [], inCot: null } as Chair
+  const chair = { from: '2026-10-01', held: [], settles: [], inCot: null, checked: true } as Chair
   assert.equal(styleOf(OISIN), 'wake')
   assert.equal(styleOf({ ...OISIN, chair }), 'night')
   assert.equal(styleOf({ ...OISIN, chair, style: 'wake' }), 'wake')

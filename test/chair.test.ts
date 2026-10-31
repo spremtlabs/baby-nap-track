@@ -4,7 +4,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { HOUR, MIN, engine } from '../src/lib/engine.ts'
-import { answer, askAbout, asleepToast, bedtimeRow, chairCard, chairChart, chairDay, chairEarly, chairGuide, chairHero, chairIntro, chairLine, chairTap, cotTap, eveningOf, fellAsleep, hold, napCotTap, napInCot, napOver, napSettling, napToast, newChair, nightPlan, pickedUp, putInCot, ranges, settleDraft, settleSave, tonight, tripsSoFar, wentOver, type Chair } from '../src/lib/chair.ts'
+import { answer, askAbout, asleepToast, bedtimeRow, chairCard, chairChart, chairDay, chairEarly, chairGuide, chairHero, chairIntro, chairLine, chairTap, checkedChair, cotTap, didNight, eveningOf, fellAsleep, hold, napCotTap, napInCot, napOver, napSettling, napToast, newChair, nightPlan, pickedUp, placeAt, planNight, putInCot, ranges, settleDraft, settleSave, tonight, tripsSoFar, unclear, wentOver, type Chair } from '../src/lib/chair.ts'
 import { chairScene } from '../src/lib/chairArt.ts'
 import { hero, nightDraft, nightProblem, reminder } from '../src/lib/model.ts'
 import { CIAN, OISIN, at, sleep, week } from './sample.ts'
@@ -16,8 +16,12 @@ const plan = (ago: number, settled: [number, number][] = [], held: number[] = []
   held: held.map((d) => eveningOf(at(d, 19, 0))),
   settles: settled.map(([d, min]) => ({ night: eveningOf(at(d, 19, 0)), inCot: at(d, 19, 0), asleep: at(d, 19, 0) + min * MIN })),
   inCot: null,
+  checked: true,
 })
 const withChair = (c: Chair | null) => ({ ...OISIN, chair: c })
+// The same plan with every evening before tonight said done, so the note tells rather than asks.
+const kept = (ago: number, settled: [number, number][] = [], held: number[] = []): Chair =>
+  ({ ...plan(ago, settled, held), did: Array.from({ length: ago }, (_, i) => eveningOf(at(i - ago, 19, 0))) })
 
 test('a night after midnight belongs to the evening before, and the morning to the evening ahead', () => {
   assert.equal(eveningOf(at(1, 2, 10)), eveningOf(at(0, 19, 0)))
@@ -359,17 +363,17 @@ test('a new plan starts tonight, and the picture draws every place', () => {
 // of encouragement and one finding, and leaves bedtime to the screen, since the day can bring it forward.
 test('through the day Today says which night it is, where to sit tonight, a cheer and one finding', () => {
   const day = (c: Chair) => chairDay(engine(withChair(c), week(), at(0, 11, 35)), c, at(0, 11, 35))
-  assert.deepEqual(day(plan(0)), { head: 'Chair method, night 1 of 13', line: "Sit right beside the cot tonight. You've got this!", known: 'Sleep training brought easier bedtimes and fewer night wakings in 49 of 52 studies.', cot: '' })
-  assert.deepEqual(day(plan(1)), { head: 'Chair method, night 2 of 13', line: "Sit beside the cot again tonight. You've got this!", known: 'Sleep training with a parent in the room worked in all four studies that tested it.', cot: '' })
-  assert.equal(day(plan(2))!.line, "Sit beside the cot again tonight. You're doing great!")
+  assert.deepEqual(day(kept(0)), { head: 'Chair method, night 1 of 13', line: "Sit right beside the cot tonight. You've got this!", known: 'Sleep training brought easier bedtimes and fewer night wakings in 49 of 52 studies.', cot: '' })
+  assert.deepEqual(day(kept(1)), { head: 'Chair method, night 2 of 13', line: "Sit beside the cot again tonight. You've got this!", known: 'Sleep training with a parent in the room worked in all four studies that tested it.', cot: '' })
+  assert.equal(day(kept(2))!.line, "Sit beside the cot again tonight. You're doing great!")
   // A move night opens on the nights done and carries no second cheer.
-  assert.equal(day(plan(3))!.line, "That's 3 nights done! Sit halfway to the door tonight.")
+  assert.equal(day(kept(3))!.line, "That's 3 nights done! Sit halfway to the door tonight.")
   // A night held back makes the plan one night longer.
-  const held = day(plan(3, [], [0]))!
+  const held = day(kept(3, [], [0]))!
   assert.equal(held.head, 'Chair method, night 4 of 14')
   assert.equal(held.line, "Sit beside the cot again tonight. You've got this!")
-  assert.deepEqual(day(plan(12)), { head: 'Chair method, night 13', line: "You've done 12 nights in the chair! Say goodnight and leave the room tonight.", known: 'Sleep training brought easier bedtimes and fewer night wakings in 49 of 52 studies.', cot: '' })
-  for (let n = 0; n < 13; n++) assert.doesNotMatch(JSON.stringify(day(plan(n))), /Bedtime/)
+  assert.deepEqual(day(kept(12)), { head: 'Chair method, night 13', line: "You've done 12 nights in the chair! Say goodnight and leave the room tonight.", known: 'Sleep training brought easier bedtimes and fewer night wakings in 49 of 52 studies.', cot: '' })
+  for (let n = 0; n < 13; n++) assert.doesNotMatch(JSON.stringify(day(kept(n))), /Bedtime/)
   assert.equal(chairDay(engine(OISIN, week(), at(0, 11, 35)), null, at(0, 11, 35)), null)
   // The card under the chart holds a finding the same morning, and the note never repeats it.
   for (let n = 1; n < 13; n++) {
@@ -507,17 +511,19 @@ test('bedtime keeps the cot time, the trips, the pick-ups and a note with the pl
 
 // 16 October 2026, from 1.0.35: the car or the buggy is for a baby being sleep trained who has been
 // trying to get to sleep for ages. Up to 1.0.34 every nap time said it, and on the phone at home it
-// showed at 4:02pm with the baby awake 23 minutes: `Nap needed today`, 33 min, down by 4:25pm.
-const afternoon = () => [...week().filter((x) => x.s < at(-1, 18, 0)), sleep(at(-1, 19, 0), at(0, 6, 30), 'night', true), sleep(at(0, 9, 0), at(0, 10, 30), 'nap'), sleep(at(0, 14, 42), at(0, 15, 39), 'nap')]
+// showed at 4:02pm with the baby awake 23 minutes: `Nap needed today`, 33 min, down by 4:25pm. From
+// 1.0.48 a baby awake 23 minutes gets the early bedtime instead, so the day here has its second nap
+// at 1:30pm and Oisín is due a nap at 4:02pm.
+const afternoon = () => [...week().filter((x) => x.s < at(-1, 18, 0)), sleep(at(-1, 19, 0), at(0, 6, 30), 'night', true), sleep(at(0, 9, 0), at(0, 10, 30), 'nap'), sleep(at(0, 13, 30), at(0, 14, 0), 'nap')]
 
 test('a nap time says nothing about the car or the buggy, with the plan on or off', () => {
   const now = at(0, 16, 2)
   for (const c of [null, plan(5)]) {
     const E = engine(withChair(c), afternoon(), now), h = chairHero(E, c, hero(E), now)
-    assert.equal(h.eyebrow, 'Nap needed today')
-    assert.equal(h.sub, 'Get Oisín down by 4:25pm.')
-    assert.equal(h.note, 'Awake 23 min')
-    assert.equal(reminder(E, 15)!.body, 'Get Oisín down by 4:25pm for 33 min.')
+    assert.equal(h.eyebrow, 'Nap window open')
+    assert.equal(h.sub, 'Put Oisín down before 4:20pm.')
+    assert.equal(h.note, 'Awake 2 h 2 min')
+    assert.equal(reminder(E, 15)!.body, 'Put Oisín down between 4 and 4:20pm.')
   }
 })
 
@@ -563,4 +569,67 @@ test('a nap settling into the evening keeps the bedtime tap away until the nap c
   assert.equal(cotTap(E, c, now), false)
   assert.equal(chairDay(E, c, now)?.cot ?? '', '')
   assert.equal(cotTap(E, napOver(c), now), true)
+})
+
+// 29 October 2026: night 19 said leave the room, counted from the calendar, on a plan where 6 of 18
+// evenings had no bedtime and 9 of the other 12 had the cot time and the asleep time in the same
+// minute. From 1.0.46 a night counts when the parent did it.
+test('a night not done keeps its number and its place, and the morning after an unclear night asks', () => {
+  const now = at(0, 11, 35), day = (c: Chair) => chairDay(engine(withChair(c), week(), now), c, now)!
+  // Night 3 went by with no bedtime: the card asks about it.
+  const c = plan(2, [[-2, 30]])
+  assert.deepEqual(unclear(c, now), { night: eveningOf(at(-1, 19, 0)), none: true })
+  assert.deepEqual(day(c), { head: 'Chair method, night 3 of 13', line: 'No bedtime went in last night. Did you do the chair method at bedtime?', known: '', cot: '', ask: 'did', night: eveningOf(at(-1, 19, 0)) })
+  // No: tonight is night 2 again, beside the cot, and the plan is a night longer.
+  const no = didNight(c, eveningOf(at(-1, 19, 0)), false)
+  assert.equal(unclear(no, now), null)
+  assert.deepEqual(day(no), { head: 'Chair method, night 2 of 13', line: 'Plenty of parents miss a night. Sit beside the cot tonight.', known: '', cot: '' })
+  assert.equal(tonight(no, now).n, 2)
+  assert.deepEqual(ranges(no, tonight(no, now).cal), ['1–3', '4–6', '7–9', '10–12'])
+  // The next evening is night 3 and the move comes a night later than the calendar.
+  const next = at(1, 11, 35)
+  assert.equal(tonight(no, next).n, 3)
+  assert.equal(tonight(no, next).place, 0)
+  assert.equal(tonight(no, at(2, 11, 35)).place, 1)
+  assert.equal(planNight(no, eveningOf(at(2, 19, 0))), 4)
+  // Yes: the night counts and nothing asks about it again.
+  const yes = didNight(c, eveningOf(at(-1, 19, 0)), true)
+  assert.equal(unclear(yes, now), null)
+  assert.equal(day(yes).line, "Sit beside the cot again tonight. You're doing great!")
+  // A cot time and an asleep time in the same minute asks too, in its own words.
+  const same = plan(2, [[-2, 30], [-1, 0]])
+  assert.equal(day(same).line, 'Last night Oisín went in the cot and was asleep the same minute. Did you do the chair method at bedtime?')
+  // A night with settling time needs no answer.
+  assert.equal(unclear(plan(2, [[-2, 30], [-1, 12]]), now), null)
+  // The chart leaves out a night said not done, and the cry question with it.
+  const zeroNo = didNight(same, eveningOf(at(-1, 19, 0)), false), E = engine(withChair(zeroNo), week(), now)
+  assert.equal(chairChart(E, zeroNo, now)!.groups[0].bars.filter(Boolean).length, 1)
+  assert.equal(askAbout(E, zeroNo, now), null)
+})
+
+test('a plan from before 1.0.46 asks once where the parent is, and a place picked starts there tonight', () => {
+  const now = at(0, 11, 35), day = (c: Chair) => chairDay(engine(withChair(c), week(), now), c, now)!
+  const zero = (d: number) => [d, 0] as [number, number]
+  const old: Chair = { ...plan(18, [[-17, 143], zero(-16), [-14, 6], zero(-13), zero(-12), zero(-10), zero(-9), zero(-7), zero(-5), zero(-4), zero(-2), zero(-1)], [-15]), checked: undefined }
+  assert.equal(tonight(old, now).n, 19)
+  assert.deepEqual(day(old), { head: 'Chair method, night 19', line: "Tonight's plan has you out of the room. Is that where you're at?", known: '', cot: '', ask: 'where' })
+  // Yes keeps the plan, and the morning question follows for last night.
+  assert.equal(day(checkedChair(old)).ask, 'did')
+  // Beside the cot: tonight is night 1 of 13, and the nights before it leave the chart.
+  const back = placeAt(old, tonight(old, now).key, 0)
+  assert.deepEqual(day(back), { head: 'Chair method, night 1 of 13', line: "Sit right beside the cot tonight. You've got this!", known: 'Sleep training brought easier bedtimes and fewer night wakings in 49 of 52 studies.', cot: '' })
+  assert.equal(chairChart(engine(withChair(back), week(), now), back, now), null)
+  assert.equal(nightPlan(engine(withChair(back), week(), now), back, now).where, 'Sit right beside the cot')
+  // The next morning asks about night 1, and after Yes tonight is night 2.
+  const tomorrow = at(1, 11, 35)
+  assert.deepEqual(unclear(back, tomorrow), { night: tonight(back, now).key, none: true })
+  assert.equal(tonight(didNight(back, tonight(back, now).key, true), tomorrow).n, 2)
+  // Inside the door: night 7, three nights there, then the hall.
+  const door = placeAt(old, tonight(old, now).key, 2)
+  assert.equal(day(door).head, 'Chair method, night 7 of 13')
+  assert.equal(day(door).line, "Sit inside the door tonight. You're doing great!")
+  assert.equal(tonight(door, at(3, 11, 35)).place, 3)
+  // A new plan never asks where.
+  const fresh = newChair(engine(OISIN, week(), now), now)
+  assert.equal(fresh.checked, true)
 })

@@ -3,6 +3,7 @@
 // token the server writes on the first message; the phone keeps it and nothing else identifies it.
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import Constants from 'expo-constants'
+import { TEST_PHONE } from './testPhone.ts'
 
 const ENDPOINT = 'https://eynuujdjarqnwkjofrpw.supabase.co/functions/v1/'
 const KEY = 'sb_publishable_u1X1QV-qny9l9YvnVvGvog_xQ8dw1Tm'
@@ -25,8 +26,11 @@ export async function loadChat (): Promise<ChatState> {
 }
 export const saveChat = (c: ChatState) => AsyncStorage.setItem(STORE_KEY, JSON.stringify({ ...c, lines: c.lines.slice(-200) })).catch(() => {})
 
+// On Google's test phones a message shows as sent and goes nowhere, so a robot's typing never
+// reaches the chat desk or the alert.
 async function post<T> (fn: string, body: object): Promise<T> {
   if (!fn) throw new Error('no chat')
+  if (TEST_PHONE) return {} as T
   const res = await fetch(ENDPOINT + fn, { method: 'POST', headers: { apikey: KEY, 'content-type': 'application/json' }, body: JSON.stringify(body) })
   return (await res.json().catch(() => ({}))) as T
 }

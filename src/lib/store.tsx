@@ -20,6 +20,7 @@ import { NOT_TOLD, dayKey, due, toldOnLoad, type Source, type Told } from './tra
 import { NoSuchLog, createLog, forgetLog, fromWire, markPaid, merge, pullLog, pushLog } from './sync.ts'
 import { listen } from './live.ts'
 import { signUp as sendSignUp } from './signup.ts'
+import { TEST_PHONE } from './testPhone.ts'
 import Constants from 'expo-constants'
 
 const STORE_KEY = 'snug.state.v1'
@@ -417,8 +418,9 @@ function useStoreValue () {
   const setOut = useCallback((o: Out | null) => update((s) => ({ ...s, out: o })), [update])
 
   // The parent's email, for new sleep guides. The phone keeps only that it was given, never the address.
+  // A test phone's email goes nowhere.
   const signUp = useCallback(async (email: string, source: 'setup' | 'settings') => {
-    const r = await sendSignUp(email, source, Constants.expoConfig?.version ?? '')
+    const r = TEST_PHONE ? 'ok' : await sendSignUp(email, source, Constants.expoConfig?.version ?? '')
     if (r === 'ok') update((s) => ({ ...s, signedUp: true }))
     return r
   }, [update])

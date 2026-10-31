@@ -99,6 +99,9 @@ export function bedTonight (E: Engine, lock = false): { at: number; early: boole
   return { at: mk && mk.kind === 'late' ? mk.early : pb ? pb.c : E.budget().bedT, early: (!!mk && mk.kind === 'late') || !!pb?.early }
 }
 
+// The day's naps against the aim, said on the early bedtime: a bit short under an hour, short from an hour.
+const napsShort = (rem: number) => `Naps were ${rem < HOUR ? 'a bit short' : 'short'} today`
+
 export function hero (E: Engine, g: Gate = NONE): Hero {
   const N = E.baby.name, ph = E.phase(), c = E.cur(), now = E.now
   const h: Hero = { eyebrow: '', ask: '', hot: false, big: [], sub: '', note: '', cta: '', upForDay: false, glow: 0, run: null, caption: '', outLink: '', heading: '', buy: '', shop: trialNote(g, now), wake: null, ways: null, fewer: null }
@@ -128,7 +131,10 @@ export function hero (E: Engine, g: Gate = NONE): Hero {
       h.note = now - lw < MIN ? 'Just woke' : `Awake ${dur(now - lw)}`
     } else if (mk && mk.kind === 'late') {
       const close = mk.early + 15 * MIN
-      if (now < mk.early - 15 * MIN) Object.assign(h, { eyebrow: 'Early bedtime', big: bigTime(mk.early), sub: `${N} had ${dur(mk.B.so)} of naps today. Bed half an hour early helps make up the rest.` })
+      // From 1.0.49 the line says what to do. Up to 1.0.48 it read `Bed half an hour early helps make up
+      // the rest.`
+      const ahead = Math.round((mk.B.bedT - mk.early) / MIN), by = ahead === 30 ? 'half an hour' : `${ahead} minutes`
+      if (now < mk.early - 15 * MIN) Object.assign(h, { eyebrow: 'Early bedtime', big: bigTime(mk.early), sub: `${napsShort(mk.B.rem)}, so put ${N} down ${by} early tonight to catch up on sleep.` })
       else if (now <= close) Object.assign(h, { eyebrow: 'Early bedtime', hot: true, big: [{ n: 'Now' }], sub: `Put ${N} down before ${fmt(close)}.`, glow: 1 })
       else Object.assign(h, { eyebrow: 'Bedtime', hot: true, big: [{ n: 'Now' }], sub: `The window closed at ${fmt(close)}. Put ${N} down as soon as you can.`, glow: 0.6 })
     } else if (w && w.car && E.out) {
@@ -442,7 +448,7 @@ export function reminder (E: Engine, leadMin: number): { at: number; title: stri
   if (E.phase() !== 'day' || E.dayStart().unknown) return null
   const N = E.baby.name, mk = E.makeUp(), p = E.plan()[0]
   if (mk && mk.kind === 'by') return { at: mk.by - leadMin * MIN, title: `${N} needs a nap`, body: `Get ${N} down by ${fmt(mk.by)} for ${dur(mk.need)}.` }
-  if (mk && mk.kind === 'late') return { at: mk.early - leadMin * MIN, title: 'Early bedtime', body: `Bed at ${fmt(mk.early)} tonight helps make up the day's naps.` }
+  if (mk && mk.kind === 'late') return { at: mk.early - leadMin * MIN, title: 'Early bedtime', body: `${napsShort(mk.B.rem)}, so put ${N} down at ${fmt(mk.early)} tonight to catch up on sleep.` }
   if (mk) return null
   if (!p) return null
   return p.bed
@@ -473,7 +479,8 @@ export function gapDraft (E: Engine, a: number, z: number) {
 // The toast after the morning is saved: the next time to put the baby down, from the new log.
 export function savedLine (E: Engine | null, g: Gate = NONE) {
   const nx = E && !isLocked(g) && E.phase() === 'day' && !E.dayStart().unknown ? E.plan()[0] : null
-  return nx ? `Saved. ${nx.bed ? 'Bedtime' : 'Next nap'} ${fmt(nx.c)}.` : 'Saved.'
+  // Bedtime is the one the card gives, early after a short day, from 1.0.48.
+  return nx ? `Saved. ${nx.bed ? 'Bedtime' : 'Next nap'} ${fmt(nx.bed ? bedTonight(E!).at : nx.c)}.` : 'Saved.'
 }
 
 /* Last night, as the sheet that changes it holds it: when the baby went down, each time the baby

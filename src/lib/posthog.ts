@@ -9,6 +9,7 @@ import Constants from 'expo-constants'
 import * as Crypto from 'expo-crypto'
 import { Platform } from 'react-native'
 import { IPHONE } from './phone.ts'
+import { TEST_PHONE } from './testPhone.ts'
 import { NO_SOURCE, parseReferrer, type Event, type Source } from './track.ts'
 
 // On an iPhone Baby Nap Track asks before it sends a single count, and sends
@@ -47,9 +48,9 @@ export function allowCounts (yes: boolean) {
 }
 
 // Resolves true once PostHog has the event. Events wait a second so a start sends one request.
-// Without a yes on an iPhone it resolves false and nothing is kept.
+// Without a yes on an iPhone it resolves false and nothing is kept, and the same on Google's test phones.
 export function track (e: Event): Promise<boolean> {
-  if (!allowed || (!TOKEN && Platform.OS !== 'web')) return Promise.resolve(false)
+  if (!allowed || TEST_PHONE || (!TOKEN && Platform.OS !== 'web')) return Promise.resolve(false)
   return new Promise((done) => {
     queue.push({ w: wire(e), done })
     if (!timer) timer = setTimeout(flush, 1000)

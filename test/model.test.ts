@@ -37,14 +37,43 @@ test('a missed window says now while naps are still to come', () => {
   assert.equal(late.big, '1 h 57 min')
 })
 
-test('at 4pm after a short day: the whole amount he still needs, now', () => {
+// Up to 1.0.46 this screen said `Nap needed now`, 1 h 5 min, with Oisín awake no time at all. He is
+// ready for a nap 2 hours after waking at six months, and the naps stop at 5pm, so the day is made
+// up with an early bedtime, as it was from 5pm already.
+test('at 4pm after a short day, just woken: bed half an hour early', () => {
   const s = screen(week(true), at(0, 16, 0))
-  assert.equal(s.eyebrow, 'Nap needed now')
-  assert.equal(s.big, '1 h 5 min')
-  assert.equal(s.sub, 'Get Oisín to sleep now.')
+  assert.equal(s.eyebrow, 'Early bedtime')
+  assert.equal(s.big, '6:30 pm')
+  // 1 h 5 min short is short; under an hour is a bit short.
+  assert.equal(s.sub, 'Naps were short today, so put Oisín down half an hour early tonight to catch up on sleep.')
+  assert.equal(reminder(s.E, 15)!.body, 'Naps were short today, so put Oisín down at 6:30pm tonight to catch up on sleep.')
+  assert.equal(s.say, 'Oisín is 1 h 5 min short of 3 hours today.')
+  assert.equal(savedLine(s.E), 'Saved. Bedtime 6:30pm.')
   // 14 October 2026: every nap time says how long the baby has been awake. Up to 1.0.32 this one did not.
-  assert.equal(hero(engine(OISIN, week(), at(0, 16, 35))).note, 'Awake 6 h 34 min')
-  assert.equal(s.say, 'Oisín needs 1 h 5 min more to make 3 hours.')
+  const long = screen(week(), at(0, 16, 35))
+  assert.equal(long.eyebrow, 'Nap needed now')
+  assert.equal(hero(long.E).note, 'Awake 6 h 34 min')
+})
+
+// 30 October 2026, a shared log at 28 weeks: up at 7, naps 10:45 to 12:58 and 3:42 to 4:19pm, an
+// aim of 3 h 30 min and bed at 7. At 4:22pm the screen said `Nap needed now`, 39 min, `Awake 4 min`,
+// under the toast `Saved. Bedtime 7pm.`
+test('just woken at 4:19pm on a short day: an early bedtime, never a nap needed now', () => {
+  const baby = { ...OISIN, born: new Date(at(-197, 12)).toISOString().slice(0, 10), target: 210 }
+  const log = [sleep(at(-1, 19, 32), at(0, 7, 0), 'night', true), sleep(at(0, 10, 45), at(0, 12, 58), 'nap'), sleep(at(0, 15, 42), at(0, 16, 19), 'nap')]
+  for (const [h, m] of [[16, 19], [16, 22], [16, 40], [17, 0]]) {
+    const E = engine(baby, log, at(0, h, m)), x = hero(E)
+    assert.equal(x.eyebrow, 'Early bedtime')
+    assert.equal(plain(x.big), '6:30 pm')
+    assert.equal(savedLine(E), 'Saved. Bedtime 6:30pm.')
+    assert.ok(!todayRows(E).rows.some((r) => r.title === 'Nap needed'))
+    assert.equal(x.sub, 'Naps were a bit short today, so put Oisín down half an hour early tonight to catch up on sleep.')
+  }
+  // Woken at 4:50pm, the early bedtime waits for 2 hours awake.
+  const later = [...log.slice(0, 2), sleep(at(0, 16, 0), at(0, 16, 50), 'nap')]
+  const L = hero(engine(baby, later, at(0, 16, 55)))
+  assert.equal(plain(L.big), '6:50 pm')
+  assert.equal(L.sub, 'Naps were a bit short today, so put Oisín down 10 minutes early tonight to catch up on sleep.')
 })
 
 test('a nap after 4pm gets a time to wake Oisín at the end of the naps, 5pm for a 7pm bedtime', () => {
@@ -708,7 +737,7 @@ test('a short nap with one nap left gives two ways to make it up, and the day fo
 test('a nap of 40 minutes or more gives no choice, and the chair method puts earlier bedtime first', () => {
   assert.equal(hero(engine(OISIN, week(), at(0, 11, 35))).ways, null)
   const log = [...week(), sleep(at(0, 12, 15), at(0, 12, 45), 'nap')]
-  const chair = { from: '2020-01-01', held: [], settles: [], inCot: null }
+  const chair = { from: '2020-01-01', held: [], settles: [], inCot: null, checked: true }
   assert.deepEqual(hero(engine({ ...OISIN, chair }, log, at(0, 13, 0))).ways?.opts.map((o) => o.id), ['bed', 'sooner'])
 })
 
@@ -767,7 +796,7 @@ test('a sleep that starts before the usual wake-up carries on the night logged b
   assert.equal(E.phase(), 'day')
   assert.deepEqual(a.kind === 'add' && [a.sleep.kind, a.back, a.toast], ['night', true, 'Back asleep at 6am.'])
   // The chair method reads it as back asleep too, and asks for no bedtime.
-  const chair = { from: '2020-01-01', held: [], settles: [], inCot: null }
+  const chair = { from: '2020-01-01', held: [], settles: [], inCot: null, checked: true }
   assert.equal(chairTap(engine({ ...OISIN, chair }, night, at(0, 6, 0)), chair, at(0, 6, 0)), null)
   const asleep = engine(OISIN, [...night, sleep(at(0, 6, 0), null, 'night')], at(0, 6, 40))
   assert.equal(asleep.phase(), 'night')

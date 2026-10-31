@@ -10,7 +10,7 @@ import * as SystemUI from 'expo-system-ui'
 import { useEffect, useRef, useState } from 'react'
 import { AppState, Modal, Share as ShareSheet, View } from 'react-native'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
-import { PLACES, answer, asleepToast, chairDay, chairGuide, chairIntro, chairTap, checkedChair, didNight, eveningOf, fellAsleep, hold, napInCot, napOver, napToast, newChair, newChairTomorrow, nightPlan, pickedUp, placeAt, placeNight, planNight, putInCot, startsTonight, tonight, wentOver } from './src/lib/chair.ts'
+import { answer, asleepToast, chairDay, chairGuide, chairIntro, chairTap, eveningOf, fellAsleep, hold, napInCot, napOver, napToast, newChair, newChairTomorrow, nightOf, nightPlan, pickedUp, putInCot, startsTonight, tonight, wentOver } from './src/lib/chair.ts'
 import { band, engine, kindFor, withNoNap, type Sleep } from './src/lib/engine.ts'
 import { ageChange, learnLine, learntDays, LEARN_DAYS } from './src/lib/guide.ts'
 import { dayKey } from './src/lib/track.ts'
@@ -24,7 +24,7 @@ import { isLocked, outcomeLine, setupLine, weekLine, type Store } from './src/li
 import { StoreProvider, useStore } from './src/lib/store.tsx'
 import { keyFrom, linkFor } from './src/lib/sync.ts'
 import { ChatButton, ChatNote, ChatSheet, useChat } from './src/screens/Chat.tsx'
-import { ChairSheet, PlaceSheet, TonightSheet } from './src/screens/Chair.tsx'
+import { ChairSheet, TonightSheet } from './src/screens/Chair.tsx'
 import { Setup, type SetupExtras } from './src/screens/Setup.tsx'
 import { ChairFlow } from './src/screens/ChairFlow.tsx'
 import { FirstNap } from './src/screens/FirstNap.tsx'
@@ -52,7 +52,7 @@ export default function App () {
 
 // `chair` is the sheet that explains the chair method, and `chair-on` the same sheet once it has started.
 // `tonight` is tonight's plan while it runs, from 14 October 2026.
-type Open = null | 'settings' | 'edit' | 'ask' | 'join' | 'delete' | 'wake' | 'naps' | 'out' | 'night' | 'bedtime' | 'chair' | 'chair-on' | 'tonight' | 'typed' | 'place'
+type Open = null | 'settings' | 'edit' | 'ask' | 'join' | 'delete' | 'wake' | 'naps' | 'out' | 'night' | 'bedtime' | 'chair' | 'chair-on' | 'tonight' | 'typed'
 
 function Main () {
   const st = useStore()
@@ -203,7 +203,7 @@ function Main () {
     if (ct?.kind === 'asleep') {
       const id = st.addSleep({ s: now, e: null, kind: 'night', up: false })
       st.setChair((c) => (c ? fellAsleep(c, ct.inCot, now) : c))
-      say(asleepToast(E.baby.name, ct.inCot, now, E.baby.chair?.trips ?? 0, E.baby.chair?.picks ?? 0, E.baby.chair ? planNight(E.baby.chair, eveningOf(ct.inCot)) : 0), id); st.refreshNow(); return
+      say(asleepToast(E.baby.name, ct.inCot, now, E.baby.chair?.trips ?? 0, E.baby.chair?.picks ?? 0, E.baby.chair ? nightOf(E.baby.chair, eveningOf(ct.inCot)) : 0), id); st.refreshNow(); return
     }
     const a = mainAction(live)
     // A nap settling in the cot ends at the tap that starts the nap, and the toast says how long it took.
@@ -221,7 +221,6 @@ function Main () {
         {st.state.baby && E
           ? tab === 'night' ? <Night E={E} g={st.gate} chair={E.baby.chair} onFlow={() => setFlow(true)} onStop={() => { st.setChair(() => null); say('Chair method stopped.') }} onNight={() => setOpen('night')} onBedtime={() => setOpen('bedtime')}
               onHold={() => { const c = E.baby.chair; if (!c) return; const t = tonight(c, Date.now()); st.setChair((x) => (x ? hold(x, t.key, !t.held) : x)) }}
-              onPlace={() => setOpen('place')}
               onCry={(night, cry) => { st.setChair((c) => (c ? answer(c, night, { cry }) : c)); say('Saved.') }}
               onWhy={(night, w) => st.setChair((c) => { const s = c?.settles.find((x) => x.night === night); return c && s ? answer(c, night, { why: s.why?.includes(w) ? s.why.filter((x) => x !== w) : [...(s.why ?? []), w] }) : c })} />
           : tab === 'menu' ? <Menu E={E} onSettings={() => setOpen('settings')} onWindows={() => setOpen('settings')} onAsk={() => chat.show()} />
@@ -252,12 +251,6 @@ function Main () {
               }}
               onNapStop={() => { st.setChair((c) => (c ? napOver(c) : c)); say('Settling stopped.'); st.refreshNow() }}
               onPlan={() => setTab('night')}
-              onAnswer={(note, yes) => {
-                // Yes to where keeps the plan as it is. Yes or No to last night says whether it counts.
-                if (note.ask === 'where') st.setChair((c) => (c ? checkedChair(c) : c))
-                else if (note.ask === 'did' && note.night) st.setChair((c) => (c ? didNight(c, note.night!, yes) : c))
-              }}
-              onPlace={() => setOpen('place')}
               hideChair={hideChair} onHideChair={() => st.setLocal({ hideChair: dayKey(Date.now()) })}
               learn={learnLine(E.baby.name, learnt)} age={age}
               onAgeOk={() => { st.setLocal({ bandSeen: bandNow }); st.setBaby({ keepBand: null }) }}
@@ -296,15 +289,6 @@ function Main () {
         </ThemeCtx.Provider>
       </Modal>
       <TonightSheet open={open === 'tonight'} plan={E?.baby.chair ? nightPlan(E, E.baby.chair, E.now) : null} onClose={() => setOpen(null)} />
-      <PlaceSheet open={open === 'place'} place={E?.baby.chair ? tonight(E.baby.chair, E.now).place : 0} onClose={() => setOpen(null)}
-        onPick={(p) => {
-          const c = E?.baby.chair
-          if (!c) return
-          const key = tonight(c, Date.now()).key
-          st.setChair((x) => (x ? placeAt(x, key, p) : x))
-          setOpen(null)
-          say(`Tonight is night ${placeNight(p)}, ${PLACES[p]}.`)
-        }} />
       <EditSheet open={open === 'edit'} sleep={editing} onClose={() => setOpen(null)} onToast={say} />
       <NightSheet open={open === 'night'} onClose={() => setOpen(null)} onToast={say} />
       <BedtimeSheet open={open === 'bedtime'} onClose={() => setOpen(null)} onToast={say} />

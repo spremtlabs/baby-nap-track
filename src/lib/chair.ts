@@ -17,11 +17,7 @@ export type Settle = { night: string; inCot: number; asleep: number; trips?: num
 // `from` is the evening of night 1. `held` holds the evenings the parent stayed where they were
 // for one more night. `inCot`, `trips` and `picks` are set while the baby is settling. `napCot` is
 // when the baby went into the cot for a nap, from 1.0.35.
-// From 1.0.46 a night counts when the parent did it. `off` holds the evenings the parent said they
-// did not do it, and `did` the ones they said they did where the log had no settling time. `at` is a
-// place the parent picked and the evening it starts. `checked` says the parent has said where they
-// are, so a plan started before 1.0.46 asks once.
-export type Chair = { from: string; held: string[]; settles: Settle[]; inCot: number | null; trips?: number; picks?: number; napCot?: number | null; off?: string[]; did?: string[]; at?: { night: string; place: number }; checked?: boolean }
+export type Chair = { from: string; held: string[]; settles: Settle[]; inCot: number | null; trips?: number; picks?: number; napCot?: number | null }
 
 export const CRY: { value: Cry; label: string }[] = [{ value: 'none', label: 'None' }, { value: 'some', label: 'Some' }, { value: 'lot', label: 'A lot' }]
 export const WHY: { value: Why; label: string }[] = [{ value: 'unwell', label: 'Unwell' }, { value: 'teething', label: 'Teething' }, { value: 'away', label: 'Away from home' }]
@@ -48,7 +44,7 @@ export const nightOf = (c: Chair, key: string) => Math.max(1, dayNo(key) - dayNo
 // is down for the night. Before 6am with the baby up for the day, it is still this evening.
 const down = (E: Engine) => { const ph = E.phase(); return ph === 'night' || ph === 'waking' }
 export const newChair = (E: Engine, now: number): Chair =>
-  ({ from: down(E) ? eveningOf(E.nightSegs()[0].s + DAY) : eveningOf(Math.max(now, E.dayStart().t + 6 * HOUR)), held: [], settles: [], inCot: null, checked: true })
+  ({ from: down(E) ? eveningOf(E.nightSegs()[0].s + DAY) : eveningOf(Math.max(now, E.dayStart().t + 6 * HOUR)), held: [], settles: [], inCot: null })
 // A plan started after bedtime has nothing to show until its first evening.
 const begun = (c: Chair, now: number) => dayNo(eveningOf(now)) >= dayNo(c.from)
 // Night 1 is tonight when it falls on today's date or earlier, and tomorrow when it is the next one.
@@ -59,79 +55,39 @@ export const newChairTomorrow = (E: Engine, now: number): Chair => {
 }
 export const startsTonight = (c: Chair, now: number) => dayNo(c.from) <= dayNo(ymd(new Date(now)))
 
-// Night by night: three nights done at each place, one more for each night the parent held, and
-// from the fifth place on the parent is out of the room. `n` is the evening's place in the calendar
-// and `k` the night of the plan it is. A night the parent did not do is `off`: it keeps its number
-// and its place for the next evening. A place the parent picked starts again from that evening, and
-// the evenings before it are `old`. `move` is a night the parent would move on.
-// Up to 1.0.44 every evening counted, so night 19 said leave the room whatever the nights before it
-// had been, 29 October 2026.
-type Night = { n: number; key: string; place: number; move: boolean; k: number; off: boolean; old: boolean }
+// Night by night: three nights at each place, one more for each night the parent held, and from
+// the fifth place on the parent is out of the room. `move` is a night the parent would move on.
+type Night = { n: number; key: string; place: number; move: boolean }
 function nights (c: Chair, upTo: number): Night[] {
   const out: Night[] = []
-  let place = 0, at = 0, k = 0, old = !!c.at
+  let place = 0, at = 0
   for (let n = 1; n <= upTo; n++) {
-    const key = keyOf(c, n), off = !!c.off?.includes(key)
-    if (c.at && key === c.at.night) { place = c.at.place; at = 0; k = place * NIGHTS_AT; old = false }
-    const move = n > 1 && at >= NIGHTS_AT && place < 4
+    const key = keyOf(c, n), move = n > 1 && at >= NIGHTS_AT && place < 4
     if (move && !c.held.includes(key)) { place++; at = 0 }
-    if (!off) { at++; k++ }
-    out.push({ n, key, place, move, k: off ? k + 1 : k, off, old })
+    at++
+    out.push({ n, key, place, move })
   }
   return out
 }
-// The nights of the plan as it stands: from a place picked on, and each night done or to come.
-const live = (c: Chair, upTo: number) => nights(c, upTo).filter((x) => !x.old && !x.off)
 
 // The nights each of the four places covers, past ones as they went and the rest as planned.
 export function ranges (c: Chair, n: number): string[] {
-  const all = live(c, n + 4 * NIGHTS_AT + 4), out: string[] = []
+  const all = nights(c, n + 4 * NIGHTS_AT + 4), out: string[] = []
   for (let p = 0; p < 4; p++) {
     const at = all.filter((x) => x.place === p)
-    out.push(at.length ? (at.length === 1 ? String(at[0].k) : `${at[0].k}–${at[at.length - 1].k}`) : '')
+    out.push(at.length ? (at.length === 1 ? String(at[0].n) : `${at[0].n}–${at[at.length - 1].n}`) : '')
   }
   return out
 }
 
 // The night the parent leaves the room, with any nights held back counted in.
-const leaveNight = (c: Chair, n: number) => live(c, n + 4 * NIGHTS_AT + 4).find((x) => x.place === 4)?.k
+const leaveNight = (c: Chair, n: number) => nights(c, n + 4 * NIGHTS_AT + 4).find((x) => x.place === 4)?.n
 
-// The night of the plan an evening is, said in the toast and on the bedtime row.
-export const planNight = (c: Chair, key: string) => { const n = nightOf(c, key); return nights(c, n)[n - 1].k }
-
-// `n` is the night of the plan and `cal` the evening's place in the calendar.
-// `fresh` is the first evening at a place the parent picked.
-export type Tonight = { key: string; n: number; cal: number; place: number; move: boolean; held: boolean; settled: boolean; fresh: boolean; ranges: string[] }
+export type Tonight = { key: string; n: number; place: number; move: boolean; held: boolean; settled: boolean; ranges: string[] }
 
 export function tonight (c: Chair, now: number): Tonight {
   const key = eveningOf(now), n = nightOf(c, key), x = nights(c, n)[n - 1]
-  return { key, n: x.k, cal: n, place: x.place, move: x.move, held: c.held.includes(key), settled: c.settles.some((s) => s.night === key), fresh: c.at?.night === key, ranges: ranges(c, n) }
-}
-
-// What the parent tells the app, from 1.0.46. A night said not done comes off the count; a night
-// said done stays on it and is not asked about again.
-export const didNight = (c: Chair, night: string, yes: boolean): Chair => ({
-  ...c,
-  off: yes ? (c.off ?? []).filter((k) => k !== night) : [...new Set([...(c.off ?? []), night])],
-  did: yes ? [...new Set([...(c.did ?? []), night])] : (c.did ?? []).filter((k) => k !== night),
-})
-// A place picked starts that evening as its first night there, and any night held after it goes.
-export const placeAt = (c: Chair, night: string, place: number): Chair =>
-  ({ ...c, at: { night, place }, checked: true, held: c.held.filter((k) => k < night) })
-export const checkedChair = (c: Chair): Chair => ({ ...c, checked: true })
-// The night number a place starts on, said beside each place in the sheet.
-export const placeNight = (place: number) => place * NIGHTS_AT + 1
-
-// The night before tonight, when the app cannot tell whether the parent did it: no bedtime went in,
-// or the cot time and the asleep time are the same minute. Nights before a place picked are left out.
-export function unclear (c: Chair, now: number): { night: string; none: boolean } | null {
-  const t = tonight(c, now)
-  if (t.cal < 2) return null
-  const x = nights(c, t.cal)[t.cal - 2]
-  if (x.old || x.off || c.did?.includes(x.key)) return null
-  const s = c.settles.find((y) => y.night === x.key)
-  if (s && s.asleep - s.inCot >= MIN) return null
-  return { night: x.key, none: !s }
+  return { key, n, place: x.place, move: x.move, held: c.held.includes(key), settled: c.settles.some((s) => s.night === key), ranges: ranges(c, n) }
 }
 
 // The plan is for bedtime only, from 14 October 2026. The cot tap comes in the evening, from noon,
@@ -201,7 +157,7 @@ export type Ask = { night: string; question: string; why: Why[] }
 export function askAbout (E: Engine, c: Chair | null | undefined, now: number): Ask | null {
   if (!c) return null
   const s = [...c.settles].sort((a, b) => b.asleep - a.asleep)[0]
-  if (!s || s.cry || c.off?.includes(s.night) || now - s.asleep > 16 * HOUR || now < s.asleep) return null
+  if (!s || s.cry || now - s.asleep > 16 * HOUR || now < s.asleep) return null
   return { night: s.night, question: `How much did ${E.baby.name} cry while settling?`, why: s.why ?? [] }
 }
 const hard = (s: Settle | undefined) => !!s && (s.cry === 'lot' || !!s.why?.length)
@@ -217,7 +173,7 @@ export function settleDraft (c: Chair | null | undefined, down: number): SettleD
   const night = eveningOf(down)
   if (dayNo(night) < dayNo(c.from)) return null
   const s = c.settles.find((x) => x.night === night)
-  return { night, n: planNight(c, night), inCot: s?.inCot ?? null, trips: s?.trips ?? 0, picks: s?.picks ?? 0, note: s?.note ?? '' }
+  return { night, n: nightOf(c, night), inCot: s?.inCot ?? null, trips: s?.trips ?? 0, picks: s?.picks ?? 0, note: s?.note ?? '' }
 }
 // Nothing put in keeps no settling, and a cot time left alone is the moment the baby fell asleep.
 export function settleSave (c: Chair, d: SettleDraft, asleep: number): Chair {
@@ -312,23 +268,12 @@ export function chairHero (E: Engine, c: Chair | null | undefined, h: Hero, now:
 // are done it holds the button that puts the baby in the cot, at any hour, so an early bedtime is
 // clocked in before the timer turns into the cot tap. It gives way to the picture at bedtime.
 // 12 October 2026: the note gave bedtime, which the day can bring forward, and had nothing to tap.
-// From 1.0.46 the note asks before it tells. `ask` is `where` once on a plan started before 1.0.46,
-// with Yes and Change where I sit under it, and `did` the morning after a night the log cannot
-// answer, with Yes and No; `night` is the evening it asks about. After No the line says to take the
-// same place again.
-export type DayNote = { head: string; line: string; known: string; cot: string; ask?: 'where' | 'did'; night?: string }
+export type DayNote = { head: string; line: string; known: string; cot: string }
 const CHEER = ["You've got this!", "You're doing great!"]
 export function chairDay (E: Engine, c: Chair | null | undefined, now: number): DayNote | null {
   const ph = E.phase()
   if (!c || (ph !== 'day' && ph !== 'nap') || E.unknownMorning() || chairCard(E, c, now)) return null
-  const t = tonight(c, now), last = leaveNight(c, t.cal), N = E.baby.name
-  const head = `Chair method, night ${t.n}${last && t.place < 4 ? ` of ${last}` : ''}`
-  const cot = ph === 'day' && begun(c, now) && !t.settled && !E.planNaps().length && !napSettling(E, c, now) ? `${N} is in the cot` : ''
-  if (!c.checked && !c.at && t.cal > NIGHTS_AT) return { head, line: `Tonight's plan has you ${PLACES[t.place]}. Is that where you're at?`, known: '', cot, ask: 'where' }
-  const u = unclear(c, now)
-  if (u) return { head, line: `${u.none ? 'No bedtime went in last night.' : `Last night ${N} went in the cot and was asleep the same minute.`} Did you do the chair method at bedtime?`, known: '', cot, ask: 'did', night: u.night }
-  const prev = t.cal > 1 ? nights(c, t.cal)[t.cal - 2] : null
-  if (prev && prev.off && !prev.old) return { head, line: `Plenty of parents miss a night. ${t.place === 4 ? 'Say goodnight and leave the room tonight.' : `Sit ${PLACES[t.place]} tonight.`}`, known: '', cot }
+  const t = tonight(c, now), last = leaveNight(c, t.n)
   // A move night already opens on the nights done, so it carries no second cheer.
   const moved = t.move && !t.held
   const sit = t.place === 4 ? (moved ? `You've done ${t.n - 1} nights in the chair! Say goodnight and leave the room tonight.` : 'Say goodnight and leave the room tonight.') : sitLine(t)
@@ -337,14 +282,14 @@ export function chairDay (E: Engine, c: Chair | null | undefined, now: number): 
   const under = chairChart(E, c, now)?.note ?? ''
   const order = [KNOWN.studies, KNOWN.room, KNOWN.week], k = (t.n - 1) % order.length
   const known = [...order.slice(k), ...order.slice(0, k)].find((x) => !under.startsWith(x)) ?? ''
-  return { head, line, known, cot }
+  const cot = ph === 'day' && begun(c, now) && !t.settled && !E.planNaps().length && !napSettling(E, c, now) ? `${E.baby.name} is in the cot` : ''
+  return { head: `Chair method, night ${t.n}${last && t.place < 4 ? ` of ${last}` : ''}`, line, known, cot }
 }
 
 // What the card says at bedtime, before the baby goes into the cot: where to sit, and well done
 // on the nights that finish a place.
 function sitLine (t: Tonight) {
   if (t.n === 1) return 'Sit right beside the cot tonight.'
-  if (t.fresh) return `Sit ${PLACES[t.place]} tonight.`
   if (t.move && !t.held) return `That's ${t.n - 1} nights done! Sit ${PLACES[t.place]} tonight.`
   return `Sit ${PLACES[t.place]} again tonight.`
 }
@@ -357,7 +302,7 @@ export function chairCard (E: Engine, c: Chair | null | undefined, now: number):
   if (!c || !begun(c, now)) return null
   const ph = E.phase(), live = settling(E, c, now), at = cotTap(E, c, now)
   if (!live && !at) return null
-  const t = tonight(c, now), last = leaveNight(c, t.cal), plan = nightPlan(E, c, now)
+  const t = tonight(c, now), last = leaveNight(c, t.n), plan = nightPlan(E, c, now)
   const canHold = t.move && !t.settled && !live && ph === 'day'
   const prev = Math.max(0, t.held ? t.place : t.place - 1)
   // A hard night before a move night: the parent can stay put, and the link is right below.
@@ -384,7 +329,7 @@ export type NightPlan = { head: string; where: string; line: string; steps: stri
 // the last one there by the plan as it stands.
 function atPlace (c: Chair, n: number) {
   const all = nights(c, n + 1), place = all[n - 1].place
-  return { at: all.slice(0, n).filter((x) => x.place === place && !x.old && !x.off).length, last: place < 4 && all[n].place !== place }
+  return { at: all.slice(0, n).filter((x) => x.place === place).length, last: place < 4 && all[n].place !== place }
 }
 
 // The night's line never names the place, because the heading above it does. It says what changes
@@ -457,7 +402,7 @@ function nightHelp (place: number, N: string): Help[] {
 }
 
 export function nightPlan (E: Engine, c: Chair, now: number): NightPlan {
-  const t = tonight(c, now), N = E.baby.name, last = leaveNight(c, t.cal), p = atPlace(c, t.cal), s = nightSteps(t.place, N)
+  const t = tonight(c, now), N = E.baby.name, last = leaveNight(c, t.n), p = atPlace(c, t.n), s = nightSteps(t.place, N)
   return {
     head: `Night ${t.n}${last && t.place < 4 ? ` of ${last}` : ''}`,
     where: WHERE[t.place],
@@ -502,29 +447,23 @@ export type Chart = {
   stay: { line: string; link: string } | null
 }
 export function chairChart (E: Engine, c: Chair | null | undefined, now: number): Chart | null {
-  if (!c) return null
-  // From 1.0.46 the chart holds the nights of the plan as it stands: a night said not done, and the
-  // nights before a place picked, have no bar and no coaching.
-  const t = tonight(c, now), plan = nights(c, t.cal + 4 * NIGHTS_AT + 4), counted = new Set(plan.filter((x) => !x.old && !x.off).map((x) => x.key))
-  const settles = c.settles.filter((s) => counted.has(s.night))
-  if (!settles.length) return null
-  const byNight = new Map(settles.map((s) => [s.night, s]))
-  const last = [...settles].sort((a, b) => b.asleep - a.asleep)[0]
+  if (!c || !c.settles.length) return null
+  const t = tonight(c, now), plan = nights(c, t.n + 4 * NIGHTS_AT + 4), byNight = new Map(c.settles.map((s) => [s.night, s]))
+  const last = [...c.settles].sort((a, b) => b.asleep - a.asleep)[0]
   const groups = t.ranges.map((label, p) => ({
     label,
-    bars: plan.filter((x) => x.place === p && !x.old && !x.off).map((x) => {
+    bars: plan.filter((x) => x.place === p).map((x) => {
       const s = byNight.get(x.key)
       return s ? { min: Math.max(1, Math.round((s.asleep - s.inCot) / MIN)), last: s === last } : null
     }),
   }))
-  const max = Math.max(30, ...settles.map((s) => (s.asleep - s.inCot) / MIN))
+  const max = Math.max(30, ...c.settles.map((s) => (s.asleep - s.inCot) / MIN))
   const N = E.baby.name, say: string[] = []
   let head = '', note = ''
   // The settling just gone, against night 1 and the night before.
   if (now - last.asleep < 20 * HOUR) {
-    // `cal` finds the evening in the calendar, and `ln` is the night of the plan it was.
-    const same = last.night === t.key, ms = last.asleep - last.inCot, cal = nightOf(c, last.night), ln = plan[cal - 1].k
-    const first = byNight.get(plan.find((x) => !x.old && !x.off)?.key ?? ''), before = byNight.get(keyOf(c, cal - 1)), was = plan[cal - 1]
+    const same = last.night === t.key, ms = last.asleep - last.inCot, ln = nightOf(c, last.night)
+    const first = byNight.get(plan[0].key), before = byNight.get(keyOf(c, ln - 1)), was = plan[ln - 1]
     const gain = first && first !== last ? first.asleep - first.inCot - ms : 0
     // Slower than night 1, or no faster: the heading steadies, and what the HSE says of that night follows.
     const tough = !same && ln > 1 && ms >= MIN && gain < 2 * MIN
@@ -576,7 +515,7 @@ export function chairChart (E: Engine, c: Chair | null | undefined, now: number)
   if (t.key !== last.night && t.move && !t.settled && (ph === 'day' || ph === 'nap') && !chairCard(E, c, now)) {
     const at = Math.max(0, t.held ? t.place : t.place - 1), here = STAY[at]
     // The 3 to 4 nights the HSE gives covers a fourth night at a place inside the room, and no more.
-    const fourth = at < 3 && plan.filter((x) => x.n < t.cal && x.place === at && !x.old && !x.off).length === NIGHTS_AT
+    const fourth = at < 3 && plan.filter((x) => x.n < t.n && x.place === at).length === NIGHTS_AT
     stay = t.held
       ? { line: `You're taking one more night ${here}.`, link: 'Move your chair tonight' }
       : { line: `You can take one more night ${here}.${fourth ? ' The HSE says to move every 3 to 4 nights.' : ''}`, link: `Stay ${here} one more night` }

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Animated, Pressable, Text, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Defs, Path, RadialGradient, Rect, Stop } from 'react-native-svg'
-import { askAbout, bedtimeRow, chairCard, chairDay, chairHero, tonight, type Chair, type ChairHero, type Cry, type DayNote, type Why } from '../lib/chair.ts'
+import { askAbout, bedtimeRow, chairCard, chairDay, chairHero, tonight, type Chair, type ChairHero, type Cry, type Why } from '../lib/chair.ts'
 import { ageLine, daySleep, hero, todayRows, week, type Fewer, type Ribbon as RibbonData, type Ways, type WeekRow } from '../lib/model.ts'
 import { MIN, atMins, morningAt, type Engine, type Route } from '../lib/engine.ts'
 import type { Gate } from '../lib/shop.ts'
@@ -50,9 +50,6 @@ type Props = {
   onNapStop: () => void
   // Tonight's plan, from the note through the day and the card at bedtime.
   onPlan: () => void
-  // From 1.0.46 the note's two buttons: Yes or No to its question, and Change where I sit.
-  onAnswer: (note: DayNote, yes: boolean) => void
-  onPlace: () => void
   onCry: (night: string, c: Cry) => void
   onWhy: (night: string, w: Why) => void
   // After a short nap, the way the parent picks to make it up.
@@ -69,7 +66,7 @@ type Props = {
   onAgeKeep: () => void
 }
 
-export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onEdit, onNight, onBedtime, onAdd, onMorning, onWake, onGap, onNoNap, onOut, onType, chair, onHold, onCot, onTrip, onPick, onNapCot, onNapStop, onPlan, onAnswer, onPlace, onCry, onWhy, onWay, onFewer, hideChair, onHideChair, learn, age, onAgeOk, onAgeKeep }: Props) {
+export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onEdit, onNight, onBedtime, onAdd, onMorning, onWake, onGap, onNoNap, onOut, onType, chair, onHold, onCot, onTrip, onPick, onNapCot, onNapStop, onPlan, onCry, onWhy, onWay, onFewer, hideChair, onHideChair, learn, age, onAgeOk, onAgeKeep }: Props) {
   const t = useTheme(), insets = useSafeAreaInsets()
   const scroll = useRef(new Animated.Value(0)).current
   const h = chairHero(E, chair, hero(E, g), E.now), unknown = E.unknownMorning()
@@ -128,7 +125,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onEdit, onNigh
             <TimerBlock h={h} onMain={onMain} />
             {card ? <ChairCard card={card} onHold={onHold} /> : null}
             <Chips onType={onType} />
-            {chairNote && (!hideChair || chairNote.ask) ? <ChairNote note={chairNote} onCot={onCot} onPlan={onPlan} onClose={onHideChair} onAnswer={(yes) => onAnswer(chairNote, yes)} onPlace={onPlace} /> : null}
+            {chairNote && !hideChair ? <ChairNote note={chairNote} onCot={onCot} onPlan={onPlan} onClose={onHideChair} /> : null}
           </>
         ) : (
           <>
@@ -155,7 +152,7 @@ export function Today ({ E, g, onBuy, onWeek, onMain, onUpForDay, onEdit, onNigh
                 sits under the two buttons, so it never pushes them down the screen. */}
             <Chips onType={onType} out={h.outLink} onOut={onOut} />
             {h.shop ? <T size={14} color={t.muted} style={{ marginTop: 4, lineHeight: 20 }}>{h.shop}</T> : null}
-            {chairNote && (!hideChair || chairNote.ask) ? <ChairNote note={chairNote} onCot={onCot} onPlan={onPlan} onClose={onHideChair} onAnswer={(yes) => onAnswer(chairNote, yes)} onPlace={onPlace} /> : null}
+            {chairNote && !hideChair ? <ChairNote note={chairNote} onCot={onCot} onPlan={onPlan} onClose={onHideChair} /> : null}
           </>
         )}
 

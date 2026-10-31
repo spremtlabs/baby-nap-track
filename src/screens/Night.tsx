@@ -22,8 +22,6 @@ type Props = {
   onNight: () => void
   onBedtime: () => void
   onHold: () => void
-  // From 1.0.46: Change where I sit, under tonight's plan.
-  onPlace: () => void
   onCry: (night: string, c: Cry) => void
   onWhy: (night: string, w: Why) => void
 }
@@ -32,7 +30,7 @@ export function Night (p: Props) {
   return <ThemeCtx.Provider value={NIGHT_THEME}><NightBody {...p} /></ThemeCtx.Provider>
 }
 
-function NightBody ({ E, g, chair, onFlow, onStop, onNight, onBedtime, onHold, onPlace, onCry, onWhy }: Props) {
+function NightBody ({ E, g, chair, onFlow, onStop, onNight, onBedtime, onHold, onCry, onWhy }: Props) {
   const t = NIGHT_THEME, insets = useSafeAreaInsets(), N = E.baby.name, now = E.now
   const plan = chair ? nightPlan(E, chair, now) : null
   const chart = E.unknownMorning() ? null : chairChart(E, chair, now)
@@ -59,8 +57,7 @@ function NightBody ({ E, g, chair, onFlow, onStop, onNight, onBedtime, onHold, o
             <Rows rows={rows} onPress={(r) => (r.bed ? onBedtime : r.night ? onNight : null)} />
           </View>
         ) : null}
-        {plan ? <Link center label="Change where I sit" onPress={onPlace} style={{ marginTop: 18 }} /> : null}
-        {plan ? <Link center label="Stop the chair method" onPress={onStop} style={{ paddingTop: 0 }} /> : null}
+        {plan ? <Link center label="Stop the chair method" onPress={onStop} style={{ marginTop: 18 }} /> : null}
       </ScrollView>
     </View>
   )

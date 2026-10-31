@@ -12,8 +12,7 @@
 // where a nap started on one phone shows on the other within seconds, with no reload.
 // Then the same web build answers as an iPhone: the question
 // about usage counts, the free week started from the `7-day Trial` item or put off with Not now, an
-// App Store with no such item, and an Apple Account that had its week already. One of Google's test
-// phones sets up and asks the chat a question, and nothing leaves it.
+// App Store with no such item, and an Apple Account that had its week already.
 // Every walk also reads what the app would have sent PostHog: the steps of the free week, and no
 // name, sleep time or field outside the list below. On an iPhone it reads that nothing went before
 // the parent said yes. Nothing ships that has not been through it.
@@ -895,9 +894,6 @@ if (PUPPETEER && !fails.length) {
     if ((await text(p)).includes(HELLO)) fail('help', 'the chat opens on the old hello after the note was seen')
     await look(p, 'help')
     await tap(p, 'Close')
-    // Read for up to 3 seconds, as `absent` does. 30 October 2026: one read 0.4 seconds after Close
-    // failed 1.0.49's run on GitHub's Mac, where the screen redraws slower.
-    for (let i = 0; i < 30 && (await text(p)).includes(NOTE); i++) await new Promise((r) => setTimeout(r, 100))
     if ((await text(p)).includes(NOTE)) fail('help', 'the note is still above the icon after the chat was opened')
     await done(p)
   }
@@ -917,38 +913,6 @@ if (PUPPETEER && !fails.length) {
     await tap(q, 'Help')
     await expect(q, NOTE)
     await done(q)
-  }
-
-  // One of Google's test phones, from 1.0.50. The robot sets up with an email and asks the help chat
-  // a question. The screens are the same as on any phone, and nothing reaches PostHog, the email list
-  // or the chat desk. Until then the robots set off the new user email and the chat alert, and made up
-  // 171 of the 184 first opens PostHog counted by 31 October 2026. The calls are answered here, so a
-  // broken build sends nothing to the real servers either.
-  {
-    const now = new Date(); now.setHours(10, 0, 0, 0)
-    const p = await open('test-phone', { now: now.getTime(), play: { price: '€9.99', testPhone: true } })
-    const out = []
-    await p.setRequestInterception(true)
-    p.on('request', (r) => {
-      if (!/\/rpc\/sleep_signup|\/functions\/v1\//.test(r.url())) return r.continue()
-      if (r.method() === 'POST') out.push(r.url().replace(/^.*\//, ''))
-      r.respond({ status: 200, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*', 'access-control-allow-methods': 'POST, OPTIONS' }, contentType: 'application/json', body: r.method() === 'OPTIONS' ? '' : '{"ok":true}' })
-    })
-    await toMorning(p, 'Cian', 76, 'robot@example.com')
-    await setTime(p, 'wake-time', '07:30')
-    await tap(p, 'Next')
-    await tap(p, 'No naps yet')
-    await toToday(p, 'Cian')
-    await tap(p, 'Help')
-    await expect(p, 'A person reads every message.')
-    await p.type('[data-testid=chat-entry]', 'How does sleep tracking work?')
-    await tap(p, 'Send')
-    await expect(p, "Sent. We'll answer here.")
-    await new Promise((r) => setTimeout(r, 1500))
-    const counted = await sent(p)
-    if (counted.length) fail('test-phone', `a test phone sent ${[...new Set(counted.map((e) => e.event))].join(', ')} to PostHog`)
-    if (out.length) fail('test-phone', `a test phone sent ${out.join(', ')} off the phone`)
-    await done(p)
   }
 
   // The store's rating card is asked for once, on the third day a nap starts from the timer. The web
@@ -974,15 +938,13 @@ if (PUPPETEER && !fails.length) {
     }
   }
 
-  // The 4pm example: a short day of three short naps, the last ending at 4pm. 30 October 2026: up to
-  // 1.0.46 this said `Nap needed now` with the baby just woken, so it now reads the early bedtime.
+  // The 4pm example: a short day of three short naps.
   {
     const p = await open('4pm', seed('short'))
-    await expect(p, 'Early bedtime')
-    await expect(p, 'Naps were short today, so put Oisín down half an hour early tonight to catch up on sleep.')
-    await absent(p, 'Nap needed')
+    await expect(p, 'Nap needed now')
+    await expect(p, 'Get Oisín to sleep now.')
     await absent(p, 'overtired')
-    await expect(p, 'Oisín is 1 h 5 min short of 3 hours today.')
+    await expect(p, 'Oisín needs 1 h 5 min more to make 3 hours.')
     await look(p, 'short-4pm')
     await done(p)
   }
@@ -1046,9 +1008,9 @@ if (PUPPETEER && !fails.length) {
   // buggy is for a nap tried in the cot for ages, so it comes after an hour of settling.
   {
     const p = await open('chair-nap', seed('chair-nap'))
-    await expect(p, 'Nap window open')
-    await expect(p, 'Put Oisín down before 4:20pm.')
-    await expect(p, 'Awake 2 h 2 min')
+    await expect(p, 'Nap needed today')
+    await expect(p, 'Get Oisín down by 4:25pm.')
+    await expect(p, 'Awake 23 min')
     await absent(p, 'overtired')
     await look(p, 'chair-nap')
     await tap(p, 'Oisín is in the cot for a nap')
@@ -1060,7 +1022,7 @@ if (PUPPETEER && !fails.length) {
     await look(p, 'chair-nap-settling')
     await tap(p, "Oisín didn't go down")
     await expect(p, 'Settling stopped.')
-    await expect(p, 'Put Oisín down before 4:20pm.')
+    await expect(p, 'Get Oisín down by 4:25pm.')
     await tap(p, 'Oisín is in the cot for a nap')
     await tap(p, 'Fell asleep')
     await expect(p, 'Nap started at 4:02pm.')
@@ -1371,37 +1333,6 @@ if (PUPPETEER && !fails.length) {
     await expect(c, 'Chair method, night 2 of 13')
     await expect(c, 'If it gets hard')
     await done(c)
-    // 29 October 2026: night 19 said leave the room on a plan where most nights had no settling
-    // time. From 1.0.46 a plan from before asks once where the parent is, and a night the log cannot
-    // answer is asked about the next morning.
-    const o = await open('chair-old', seed('chair-old'))
-    await expect(o, 'Chair method, night 19')
-    await expect(o, "Tonight's plan has you out of the room. Is that where you're at?")
-    await look(o, 'chair-old-ask')
-    await tap(o, 'Change where I sit')
-    await expect(o, 'Where will you sit tonight?')
-    await look(o, 'chair-place')
-    await tap(o, 'Beside the cot')
-    await expect(o, 'Tonight is night 1, beside the cot.')
-    await expect(o, 'Chair method, night 1 of 13')
-    await expect(o, "Sit right beside the cot tonight. You've got this!")
-    await absent(o, 'Is that where you')
-    await look(o, 'chair-old-placed')
-    await o.reload({ waitUntil: 'networkidle0' })
-    await expect(o, 'Chair method, night 1 of 13')
-    await tap(o, 'Night')
-    await expect(o, 'Change where I sit')
-    await done(o)
-    const mi = await open('chair-missed', seed('chair-missed'))
-    await expect(mi, 'Chair method, night 3 of 13')
-    await expect(mi, 'No bedtime went in last night. Did you do the chair method at bedtime?')
-    await look(mi, 'chair-missed-ask')
-    await tap(mi, 'No')
-    await expect(mi, 'Chair method, night 2 of 13')
-    await expect(mi, 'Plenty of parents miss a night. Sit beside the cot tonight.')
-    await absent(mi, 'Did you do the chair method')
-    await look(mi, 'chair-missed-no')
-    await done(mi)
     // With no chair method, Night offers it, and the four screens start it.
     const n = await open('home-night', seed('morning'))
     await tap(n, 'Night')
@@ -1795,4 +1726,4 @@ if (fails.length) {
   for (const f of fails) console.log('  ' + f)
   process.exit(1)
 }
-console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings with the aim, the nap count and a wake window set and cleared, adding a sleep, the rating card asked for on the third day of naps, the 4pm example, a short morning nap, a short nap with one nap left and the two ways to make it up, the offer of one nap fewer, the night, a nap settled in the cot with the chair method on and the car or the buggy after an hour, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, the chair method started in the day, at bedtime and after it with what to do first, the cot button once the naps are done, bedtime put in on its own with the cot time, pick-ups and a note, the morning of a move day with one more night picked and let go, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across and a nap on one showing on the other without a reload, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, one of Google\'s test phones sending nothing, and what PostHog hears at each step')
+console.log('CHECK PASSED: types, tests, source guards, and the web build walked through setup with a morning nap, setup at 1pm, the next morning with the night not logged and then added, last night changed from the list and from the morning toast, the sleep diary printed on A4, a 1.0.0 phone, the morning, a nap and its timer moving, Settings with the aim, the nap count and a wake window set and cleared, adding a sleep, the rating card asked for on the third day of naps, the 4pm example, a short morning nap, a short nap with one nap left and the two ways to make it up, the offer of one nap fewer, the night, a nap settled in the cot with the chair method on and the car or the buggy after an hour, the chair method at bedtime, settling with the trips to the cot, the crying asked after and the next morning, the chair method started in the day, at bedtime and after it with what to do first, the cot button once the naps are done, bedtime put in on its own with the cot time, pick-ups and a note, the morning of a move day with one more night picked and let go, an email taken in setup and in Settings, the free week, no price, the nap times locked and paid for, a pending payment, a log shared live between two phones with the payment carried across and a nap on one showing on the other without a reload, an iPhone saying no to counts and Not now to the free week, an iPhone saying yes and starting the week, an App Store with no free week item, an Apple Account that had its week, and what PostHog hears at each step')

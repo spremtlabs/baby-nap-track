@@ -636,26 +636,13 @@ function read (baby: Baby, log: Sleep[], now: number, out: Out | null = null) {
     if (B.rem < 15 * MIN) return null
     const naps = plan().filter((w) => !w.bed)
     const by = Math.floor(B.latest / (5 * MIN)) * 5 * MIN
-    // The baby is ready to go back down once the shortest wake window for the age has passed, and an
-    // early bedtime comes no sooner either. From 1.0.48: up to 1.0.46 a baby who woke at 4:19pm on
-    // 30 October 2026 got `Nap needed now` 4 minutes later, with no nap left in the plan.
-    const ready = lastWake() + B.b.min * MIN
-    const late = (): MakeUp | null => {
-      const early = Math.max(B.bedT - 30 * MIN, Math.ceil(ready / (5 * MIN)) * 5 * MIN)
-      return early < B.bedT ? { kind: 'late', early, B } : null
-    }
     if (naps.length && now <= naps[0].e && naps[0].s <= B.latest) return null
     if (naps.length > 1 && now > naps[0].e && now < by) return null
-    // Woke too recently to go back down: with under 20 minutes between ready and the end of the naps,
-    // the early bedtime makes up the day. When the whole amount no longer fits, the plan's next nap
-    // stands.
-    if (now < ready && ready > B.wakeBy - 20 * MIN) return late()
-    if (now < ready && ready > by) return null
     // At the same times every day the next set time stands in for a nap needed now, and only the
     // early bedtime is left to make up a short day, from 1.0.43.
     if (now < by && !(naps.length && now > naps[0].e)) return style === 'clock' ? null : { kind: 'by', need: B.rem, by, B }
     if (B.wakeBy - now >= 20 * MIN) return style === 'clock' ? null : { kind: 'now', need: B.rem, B }
-    return late()
+    return { kind: 'late', early: B.bedT - 30 * MIN, B }
   }
 
   /* One nap fewer. On 3 of the last 5 days logged the baby took one nap less than most babies this
